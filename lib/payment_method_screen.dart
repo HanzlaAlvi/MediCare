@@ -7,10 +7,14 @@ class PaymentMethodScreen extends StatefulWidget {
   final List<Map<String, dynamic>> cartItems;
   final double totalAmount;
 
+  // --- NEW: Accept Selected Address ---
+  final Map<String, dynamic> selectedAddress;
+
   const PaymentMethodScreen({
     super.key,
     required this.cartItems,
     required this.totalAmount,
+    required this.selectedAddress,
   });
 
   @override
@@ -18,9 +22,10 @@ class PaymentMethodScreen extends StatefulWidget {
 }
 
 class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
-  int _selectedOption = 0;
+  int _selectedOption = 3; // Default to COD
   bool _isLoading = false;
 
+  // --- PURANI UI WALA DATA ---
   final List<Map<String, dynamic>> paymentMethods = [
     {
       'name': 'Easy Paisa',
@@ -52,7 +57,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
     },
   ];
 
-  // --- SAFE PARSER ---
+  // --- SAFE PARSER HELPER ---
   int _parseInt(dynamic value) {
     if (value == null) return 0;
     if (value is int) return value;
@@ -60,6 +65,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
     return int.tryParse(value.toString()) ?? 0;
   }
 
+  // --- NAYI LOGIC (STOCK UPDATE + ADDRESS SAVE) ---
   Future<void> _processOrder() async {
     setState(() => _isLoading = true);
     String userId = FirebaseAuth.instance.currentUser!.uid;
@@ -70,16 +76,14 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
 
     try {
       await firestore.runTransaction((transaction) async {
-        // Temp list to store updates so we don't write during the read loop
         List<Map<String, dynamic>> stockUpdates = [];
 
-        // --- PHASE 1: READ ALL DATA FIRST ---
+        // 1. Check Stock
         for (var item in widget.cartItems) {
           String itemName = item['name'];
           int qtyOrdered = _parseInt(item['qty']);
           if (qtyOrdered <= 0) qtyOrdered = 1;
 
-          // Search for the medicine document (Query is outside transaction, getting doc is inside)
           QuerySnapshot medSnapshot = await firestore
               .collection('medicines')
               .where('name', isEqualTo: itemName)
@@ -88,8 +92,6 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
 
           if (medSnapshot.docs.isNotEmpty) {
             DocumentReference medRef = medSnapshot.docs.first.reference;
-
-            // TRANSACTIONAL READ
             DocumentSnapshot medDoc = await transaction.get(medRef);
 
             if (medDoc.exists) {
@@ -97,40 +99,43 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
               int currentStock = _parseInt(data['stock']);
               int newStock = currentStock - qtyOrdered;
               if (newStock < 0) newStock = 0;
-
-              // Store this update for Phase 2
               stockUpdates.add({'ref': medRef, 'newStock': newStock});
             }
           }
         }
 
-        // --- PHASE 2: WRITE ALL DATA ---
-
-        // 1. Update Stocks
+        // 2. Update Stock
         for (var update in stockUpdates) {
           transaction.update(update['ref'] as DocumentReference, {
             'stock': update['newStock'],
           });
         }
 
-        // 2. Create Order
-        DocumentReference orderRef = firestore.collection('orders').doc();
+        // 3. Create Order (With Address)
+        DocumentReference orderRef = firestore
+            .collection('orders')
+            .doc(orderId);
         transaction.set(orderRef, {
           'orderId': orderId,
           'userId': userId,
           'items': widget.cartItems,
-          'total': widget.totalAmount,
-          'status': 'Processing',
+          'totalAmount': widget.totalAmount, // Key match ki hai
+          'total': widget.totalAmount, // Backup key
+          'status': 'Pending',
           'statusColor': 0xFF8BC34A,
           'paymentMethod': paymentMethods[_selectedOption]['name'],
-          'date': DateTime.now().toString().split(' ')[0],
+          'date':
+              "${DateTime.now().day}-${DateTime.now().month}-${DateTime.now().year}",
           'timestamp': FieldValue.serverTimestamp(),
+
+          // --- Saving Address ---
+          'addressDetails': widget.selectedAddress,
+          'deliveryAddress':
+              "${widget.selectedAddress['street']}, ${widget.selectedAddress['city']}",
         });
       });
 
-      // --- AFTER TRANSACTION SUCCESS ---
-
-      // 3. Delete Cart (Safe to do outside transaction)
+      // 4. Delete Cart
       var cartColl = firestore
           .collection('users')
           .doc(userId)
@@ -141,9 +146,10 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
       }
 
       if (mounted) {
-        Navigator.pushReplacement(
+        Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const PaymentSuccessScreen()),
+          (route) => false,
         );
       }
     } catch (e) {
@@ -152,7 +158,6 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
           SnackBar(
             content: Text("Order Failed: $e"),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -161,6 +166,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
     }
   }
 
+  // --- PURANI UI ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -179,7 +185,9 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFF285D66)),
+            )
           : Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -190,9 +198,12 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 20),
+
+                  // List of Payment Methods (Old UI Style)
                   ...List.generate(paymentMethods.length, (index) {
                     final method = paymentMethods[index];
                     final isSelected = _selectedOption == index;
+
                     return GestureDetector(
                       onTap: () => setState(() => _selectedOption = index),
                       child: Container(
@@ -216,12 +227,25 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                               size: 30,
                             ),
                             const SizedBox(width: 15),
-                            Text(
-                              method['name'],
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  method['name'],
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                if (method['subtitle'] != '')
+                                  Text(
+                                    method['subtitle'],
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                              ],
                             ),
                             const Spacer(),
                             if (isSelected)
@@ -234,12 +258,15 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                       ),
                     );
                   }),
+
                   const Spacer(),
+
+                  // Bottom Button (Confirm Payment)
                   SizedBox(
                     width: double.infinity,
                     height: 55,
                     child: ElevatedButton(
-                      onPressed: _processOrder,
+                      onPressed: _processOrder, // Calls New Logic
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF285D66),
                         shape: RoundedRectangleBorder(

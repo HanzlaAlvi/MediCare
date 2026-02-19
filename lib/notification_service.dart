@@ -19,7 +19,6 @@ class NotificationService {
   final List<StreamSubscription> _stockSubscriptions = [];
 
   // --- 1. DEDUPLICATION MEMORY ---
-  // Yeh list yaad rakhegi ke humne kis cheez ka alert bhej diya hai
   final Set<String> _handledEvents = {};
 
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
@@ -59,7 +58,6 @@ class NotificationService {
       iOS: DarwinNotificationDetails(),
     );
 
-    // Unique ID for each notification based on time
     int id = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
     await _notificationsPlugin.show(
@@ -73,7 +71,7 @@ class NotificationService {
   // --- 4. START LISTENERS ---
   void startMonitoring() {
     if (_uid == null) return;
-    stopMonitoring(); // Reset everything first
+    stopMonitoring();
 
     _monitorOrders();
     _monitorCartAndStock();
@@ -86,28 +84,30 @@ class NotificationService {
     _orderSubscription?.cancel();
     _prescriptionSubscription?.cancel();
     _chatSubscription?.cancel();
-    for (var sub in _stockSubscriptions) {sub.cancel();}
+    for (var sub in _stockSubscriptions) {
+      sub.cancel();
+    }
     _stockSubscriptions.clear();
-    _handledEvents.clear(); // Reset memory on logout/stop
+    _handledEvents.clear();
   }
 
-  // --- A. MONITOR ORDERS (STRICT SINGLE ALERT) ---
+  // --- A. MONITOR ORDERS (INSTANT & SINGLE ALERT) ---
   void _monitorOrders() {
     _orderSubscription = _db
         .collection('orders')
         .where('userId', isEqualTo: _uid)
-        .snapshots()
+        // FIX: includeMetadataChanges ensure instant local trigger
+        .snapshots(includeMetadataChanges: true)
         .listen((snapshot) {
           for (var change in snapshot.docChanges) {
             final data = change.doc.data() as Map<String, dynamic>;
             String orderId = data['orderId'] ?? change.doc.id;
             String status = data['status'] ?? 'Processing';
 
-            // UNIQUE KEY: OrderID + Status
-            // Example: "ORD-123_Processing", "ORD-123_Shipped"
+            // UNIQUE KEY (OrderID + Status combination)
             String eventKey = "ORDER_${orderId}_$status";
 
-            // Agar ye wala status pehle hi handle kar liya hai, toh RETURN (Skip)
+            // Step 1: Check Duplicate
             if (_handledEvents.contains(eventKey)) {
               continue;
             }
@@ -117,32 +117,39 @@ class NotificationService {
             String message = "";
             String type = "delivery";
 
-            // 1. New Order (Added)
+            // Step 2: Handle Logic
+            // Case 1: New Order Placed
             if (change.type == DocumentChangeType.added) {
-              // Check timestamp to avoid alerts for old orders on app restart
               Timestamp? ts = data['timestamp'];
-              // Null means local write (Notify now), or recent time
-              if (ts == null ||
-                  DateTime.now().difference(ts.toDate()).inSeconds < 60) {
+
+              // Agar timestamp null hai (Matlab abhi mobile se likha gaya hai -> Instant Notification)
+              // Ya agar timestamp abhi 2 minute ke andar ka hai.
+              bool isRecent =
+                  ts == null ||
+                  DateTime.now().difference(ts.toDate()).inSeconds < 120;
+
+              if (isRecent && (status == 'Processing' || status == 'Pending')) {
                 shouldNotify = true;
                 title = "Order Confirmed! 🎉";
                 message = "Order #$orderId placed successfully.";
                 type = "confirmed";
               }
             }
-            // 2. Status Changed (Modified)
+            // Case 2: Status Update (Shipped/Delivered)
             else if (change.type == DocumentChangeType.modified) {
-              // Ignore if status is still 'Processing' (timestamp update)
-              if (status != 'Processing') {
+              if (status != 'Processing' && status != 'Pending') {
                 shouldNotify = true;
                 title = "Order Update 🚚";
                 message = "Your order is now $status.";
               }
             }
 
+            // Step 3: Send & Lock
             if (shouldNotify) {
               _sendNotification(title: title, message: message, type: type);
-              _handledEvents.add(eventKey); // Mark as Done
+              _handledEvents.add(
+                eventKey,
+              ); // LOCK this event to prevent duplicates
             }
           }
         });
@@ -154,34 +161,31 @@ class NotificationService {
         .collection('users')
         .doc(_uid)
         .collection('prescriptions')
-        .snapshots()
+        .snapshots(includeMetadataChanges: true)
         .listen((snapshot) {
           for (var change in snapshot.docChanges) {
             var data = change.doc.data() as Map<String, dynamic>;
             String status = data['status'] ?? 'Pending';
             String docId = change.doc.id;
 
-            // Unique Key for Prescription Status
             String eventKey = "PRES_${docId}_$status";
 
-            if (_handledEvents.contains(eventKey)) continue; // Skip duplicates
+            if (_handledEvents.contains(eventKey)) continue;
 
             bool shouldNotify = false;
             String title = "Prescription Update 📄";
             String message = "Your prescription status is now: $status";
 
-            // Check freshness
             Timestamp? ts = data['timestamp'];
             bool isRecent =
                 (ts == null) ||
-                (DateTime.now().difference(ts.toDate()).inSeconds < 60);
+                (DateTime.now().difference(ts.toDate()).inSeconds < 120);
 
             if (change.type == DocumentChangeType.modified) {
               shouldNotify = true;
             } else if (change.type == DocumentChangeType.added &&
                 status != 'Pending' &&
                 isRecent) {
-              // AI Auto-Approved instantly
               shouldNotify = true;
               title = "AI Analysis Complete 🤖";
               message = "Your prescription was automatically $status.";
@@ -193,21 +197,21 @@ class NotificationService {
                 message: message,
                 type: "prescription",
               );
-              _handledEvents.add(eventKey); // Mark as Done
+              _handledEvents.add(eventKey);
             }
           }
         });
   }
 
-  // --- C. MONITOR CHAT ---
+  // to MONITOR CHAT that is in history
   void _monitorChat() {
     _chatSubscription = _db
         .collection('users')
         .doc(_uid)
         .collection('chat_history')
         .where('role', isEqualTo: 'bot')
-        .limit(1) // Only listen to the absolute latest message
-        .snapshots()
+        .limit(1)
+        .snapshots(includeMetadataChanges: true)
         .listen((snapshot) {
           for (var change in snapshot.docChanges) {
             if (change.type == DocumentChangeType.added) {
@@ -234,77 +238,68 @@ class NotificationService {
         });
   }
 
-// --- D. MONITOR CART & STOCK (CRASH FIXED) ---
+  //to monitor CART & STOCK together because they are related and we can optimize the listeners
   void _monitorCartAndStock() {
     _cartSubscription = _db
         .collection('users')
         .doc(_uid)
         .collection('cart')
         .snapshots()
-        .listen(
-          (cartSnapshot) {
-            // Stop old stock listeners
-            for (var sub in _stockSubscriptions) {
-              sub.cancel();
-            }
-            _stockSubscriptions.clear();
+        .listen((cartSnapshot) {
+          for (var sub in _stockSubscriptions) {
+            sub.cancel();
+          }
+          _stockSubscriptions.clear();
 
-            for (var cartDoc in cartSnapshot.docs) {
-              // FIX: Data ko Map mein convert karein (Safe Mode)
-              var data = cartDoc.data();
+          for (var cartDoc in cartSnapshot.docs) {
+            var data = cartDoc.data();
+            String itemName = data['name'] ?? 'Unknown Item';
+            Timestamp? addedAt = data['addedAt'];
 
-              // Ab agar field missing bhi hoga to app crash nahi karegi
-              String itemName = data['name'] ?? 'Unknown Item';
-              Timestamp? addedAt = data['addedAt'];
-
-              // Reminder Logic
-              if (addedAt != null &&
-                  DateTime.now().difference(addedAt.toDate()).inDays >= 2) {
-                String key = "CART_REMIND_$itemName";
-                if (!_handledEvents.contains(key)) {
-                  _sendNotification(
-                    title: "Forgot something? 🤔",
-                    message: "$itemName is waiting in your cart!",
-                    type: "reminder",
-                  );
-                  _handledEvents.add(key);
-                }
+            //if the item is more than 2 days old in the cart, then send Reminder Logic
+            if (addedAt != null &&
+                DateTime.now().difference(addedAt.toDate()).inDays >= 2) {
+              String key = "CART_REMIND_$itemName";
+              if (!_handledEvents.contains(key)) {
+                _sendNotification(
+                  title: "Forgot something? 🤔",
+                  message: "$itemName is waiting in your cart!",
+                  type: "reminder",
+                );
+                _handledEvents.add(key);
               }
+            }
 
-              // Stock Logic
-              var stockSub = _db
-                  .collection('medicines')
-                  .where('name', isEqualTo: itemName)
-                  .limit(1)
-                  .snapshots()
-                  .listen((medSnapshot) {
-                    if (medSnapshot.docs.isNotEmpty) {
-                      var medData = medSnapshot.docs.first
-                          .data(); // Safe data access
-                      int stock = medData['stock'] ?? 0;
+            //the Stock Logic where if items is less than 10 7 5 3 1
+            var stockSub = _db
+                .collection('medicines')
+                .where('name', isEqualTo: itemName)
+                .limit(1)
+                .snapshots()
+                .listen((medSnapshot) {
+                  if (medSnapshot.docs.isNotEmpty) {
+                    var medData = medSnapshot.docs.first.data();
+                    int stock = medData['stock'] ?? 0;
 
-                      if ([10, 7, 5, 3, 1].contains(stock)) {
-                        String key = "STOCK_${itemName}_$stock";
-                        if (!_handledEvents.contains(key)) {
-                          _sendNotification(
-                            title: "Stock Alert! 🔥",
-                            message: "Only $stock left for $itemName",
-                            type: "offer",
-                          );
-                          _handledEvents.add(key);
-                        }
+                    if ([10, 7, 5, 3, 1].contains(stock)) {
+                      String key = "STOCK_${itemName}_$stock";
+                      if (!_handledEvents.contains(key)) {
+                        _sendNotification(
+                          title: "Stock Alert! 🔥",
+                          message: "Only $stock left for $itemName",
+                          type: "offer",
+                        );
+                        _handledEvents.add(key);
                       }
                     }
-                  });
-              _stockSubscriptions.add(stockSub);
-            }
-          },
-          onError: (e) {
-            //print("Cart Monitor Error: $e"); // Error handle taake crash na ho
-          },
-        );
+                  }
+                });
+            _stockSubscriptions.add(stockSub);
+          }
+        }, onError: (e) {});
   }
-  // --- HELPER: SEND & SAVE ---
+
+  //created HELPER to send & save the notification
   Future<void> _sendNotification({
     required String title,
     required String message,
@@ -312,10 +307,10 @@ class NotificationService {
   }) async {
     if (_uid == null) return;
 
-    // 1. Show Local Popup
+    // to shoe the local popup
     await _showLocalNotification(title, message);
 
-    // 2. Save to Firestore History
+    //Saving the history to Firestore History
     await _db.collection('notifications').add({
       'userId': _uid,
       'title': title,

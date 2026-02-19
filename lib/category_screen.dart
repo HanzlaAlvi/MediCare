@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'category_products_screen.dart'; 
+import 'category_products_screen.dart';
 
 class CategoriesScreen extends StatelessWidget {
   const CategoriesScreen({super.key});
@@ -7,11 +7,31 @@ class CategoriesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final List<Map<String, dynamic>> categories = [
-      {'name': 'Painkiller', 'icon': Icons.medication, 'color': Colors.greenAccent},
-      {'name': 'Antibiotics', 'icon': Icons.healing, 'color': Colors.orangeAccent},
-      {'name': 'Vitamins', 'icon': Icons.wb_sunny, 'color': Colors.yellowAccent},
-      {'name': 'FirstAids', 'icon': Icons.medical_services, 'color': Colors.redAccent},
-      {'name': 'Diabetic care', 'icon': Icons.bloodtype, 'color': Colors.pinkAccent},
+      {
+        'name': 'Painkiller',
+        'icon': Icons.medication,
+        'color': Colors.greenAccent,
+      },
+      {
+        'name': 'Antibiotics',
+        'icon': Icons.healing,
+        'color': Colors.orangeAccent,
+      },
+      {
+        'name': 'Vitamins',
+        'icon': Icons.wb_sunny,
+        'color': Colors.yellowAccent,
+      },
+      {
+        'name': 'FirstAids',
+        'icon': Icons.medical_services,
+        'color': Colors.redAccent,
+      },
+      {
+        'name': 'Diabetic care',
+        'icon': Icons.bloodtype,
+        'color': Colors.pinkAccent,
+      },
       {'name': 'Heart Health', 'icon': Icons.favorite, 'color': Colors.red},
     ];
 
@@ -21,12 +41,15 @@ class CategoriesScreen extends StatelessWidget {
         backgroundColor: const Color(0xFF285D66),
         foregroundColor: Colors.white,
         centerTitle: true,
-        title: const Text("Categories", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          "Categories",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         // leading: IconButton(
         //   icon: const Icon(Icons.arrow_back_ios),
         //   onPressed: () {
         //     // FIX: Added Pop functionality
-        //     Navigator.pop(context); 
+        //     Navigator.pop(context);
         //   },
         // ),
       ),
@@ -37,7 +60,11 @@ class CategoriesScreen extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 boxShadow: [
-                  BoxShadow(color: Colors.grey.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 5)),
+                  BoxShadow(
+                    color: Colors.grey.withValues(alpha: 0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
                 ],
               ),
               // child: TextField(
@@ -90,7 +117,9 @@ class CategoriesScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF285D66),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 5, offset: Offset(0, 5))],
+        boxShadow: const [
+          BoxShadow(color: Colors.black26, blurRadius: 5, offset: Offset(0, 5)),
+        ],
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -106,7 +135,11 @@ class CategoriesScreen extends StatelessWidget {
           const SizedBox(height: 15),
           Text(
             item['name'],
-            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),

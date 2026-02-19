@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'product_details_screen.dart';
 import 'cart_screen.dart';
-import 'home_screen.dart'; // MedicineCard reuse
+import 'home_widgets.dart'; // MedicineCard reuse
 
 class ViewAllScreen extends StatelessWidget {
   const ViewAllScreen({super.key});

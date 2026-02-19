@@ -24,10 +24,56 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
   bool _isVoucherApplied = false;
   final String userId = FirebaseAuth.instance.currentUser!.uid;
 
-  // --- LOGIC: Apply Voucher & Deduct Points ---
+  Map<String, dynamic>? _selectedAddress;
+
+  // --- NEW: Inline Feedback Variables ---
+  String? _voucherFeedbackMessage;
+  bool _isVoucherError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDefaultAddress();
+  }
+
+  Future<void> _loadDefaultAddress() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('addresses')
+          .orderBy('timestamp', descending: true)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _selectedAddress = snapshot.docs.first.data();
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Error loading address: $e");
+    }
+  }
+
+  // --- UPDATED LOGIC: Inline Feedback (No Snackbar) ---
   Future<void> _applyVoucher() async {
+    // Reset status
+    setState(() {
+      _voucherFeedbackMessage = null;
+      _isVoucherError = false;
+    });
+
     String enteredCode = _voucherController.text.trim();
-    if (enteredCode.isEmpty) return;
+    if (enteredCode.isEmpty) {
+      setState(() {
+        _voucherFeedbackMessage = "Please enter a code";
+        _isVoucherError = true;
+      });
+      return;
+    }
 
     try {
       final userRef = FirebaseFirestore.instance
@@ -39,25 +85,26 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
         String myActualCode = doc.data()?['referralCode'] ?? "";
         int currentPoints = doc.data()?['points'] ?? 0;
 
-        // 1. Check if Code matches user's own unique code
+        // Check 1: Code Match
         if (enteredCode != myActualCode) {
-          _showMsg("Invalid code! Please use your own reward code.");
+          setState(() {
+            _voucherFeedbackMessage = "Invalid Reward Code";
+            _isVoucherError = true;
+          });
           return;
         }
 
-        // 2. Points Check (Must be at least 100)
+        // Check 2: Points Balance
         if (currentPoints < 100) {
-          _showMsg(
-            "Not applicable! You need minimum 100 points for 5% discount.",
-          );
+          setState(() {
+            _voucherFeedbackMessage = "Insufficient points (Min 100 needed)";
+            _isVoucherError = true;
+          });
           return;
         }
 
-        // 3. APPLY DISCOUNT & DEDUCT POINTS
-        // Exact 100 points deduct honge discount ke liye
+        // Apply
         await userRef.update({'points': currentPoints - 100});
-
-        // Point History update
         await userRef.collection('point_history').add({
           'title': "Voucher Discount Applied",
           'points': "-100",
@@ -66,19 +113,18 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
         });
 
         setState(() {
-          _discountAmount = widget.totalAmount * 0.05; // 5% Discount
+          _discountAmount = widget.totalAmount * 0.05;
           _isVoucherApplied = true;
+          _voucherFeedbackMessage = "Success! 5% Discount Applied";
+          _isVoucherError = false;
         });
-
-        _showMsg("Success! 5% discount applied and 100 points deducted.");
       }
     } catch (e) {
-      _showMsg("Error applying voucher: $e");
+      setState(() {
+        _voucherFeedbackMessage = "Error: Something went wrong";
+        _isVoucherError = true;
+      });
     }
-  }
-
-  void _showMsg(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
@@ -86,18 +132,19 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
     double finalPayableAmount = widget.totalAmount - _discountAmount;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
         backgroundColor: const Color(0xFF285D66),
         foregroundColor: Colors.white,
+        elevation: 0,
         centerTitle: true,
         title: const Text(
-          "Check Out",
+          "Checkout",
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         leading: IconButton(
           onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back_ios),
+          icon: const Icon(Icons.arrow_back_ios, size: 20),
         ),
       ),
       body: SingleChildScrollView(
@@ -105,362 +152,235 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- 1. Shipping Address Section ---
+            // --- 1. Address ---
             _buildSectionHeader(
               "Shipping Address",
-              () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const AddAddressScreen(),
-                ),
-              ),
+              "Change",
+              _showAddressSelectionDialog,
             ),
             const SizedBox(height: 10),
+            _buildAddressCard(),
 
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(userId)
-                  .collection('addresses')
-                  .orderBy('timestamp', descending: true)
-                  .limit(1)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return Center(
-                    child: IconButton(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const AddAddressScreen(),
-                        ),
-                      ),
-                      icon: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF285D66),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.add, color: Colors.white),
-                      ),
-                    ),
-                  );
-                }
-                var addr =
-                    snapshot.data!.docs.first.data() as Map<String, dynamic>;
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(15),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(15),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 5,
-                        offset: Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(
-                        Icons.location_on_outlined,
-                        color: Color(0xFF285D66),
-                        size: 28,
-                      ),
-                      const SizedBox(width: 15),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              addr['fullName'] ?? 'Name',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              addr['email'] ?? 'Email',
-                              style: const TextStyle(
-                                color: Colors.grey,
-                                fontSize: 13,
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              "${addr['street']}, ${addr['city']}, ${addr['country']}",
-                              style: const TextStyle(
-                                color: Colors.grey,
-                                height: 1.4,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+            const SizedBox(height: 25),
 
-            const SizedBox(height: 30),
-
-            _buildSectionHeader("Order Summary", () => Navigator.pop(context)),
-            const SizedBox(height: 10),
-            ...widget.cartItems.map(
-              (item) => _buildOrderItem(
-                name: item['name'],
-                brand: item['brand'],
-                price: "Rs. ${item['price']}",
-                qty: "x${item['qty']}",
-                imageUrl: item['image'],
-              ),
-            ),
-
-            const SizedBox(height: 30),
-
+            // --- 2. Order Items ---
             const Text(
-              "Voucher",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                fontFamily: 'Serif',
-              ),
+              "Order Items",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 50,
-                    child: TextField(
-                      controller: _voucherController,
-                      enabled: !_isVoucherApplied,
-                      decoration: InputDecoration(
-                        hintText: _isVoucherApplied
-                            ? "Voucher Applied"
-                            : "Enter reward code...",
-                        hintStyle: TextStyle(color: Colors.grey.shade400),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 15,
-                        ),
-                        filled: _isVoucherApplied,
-                        fillColor: _isVoucherApplied
-                            ? Colors.grey.shade100
-                            : Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: Colors.grey.shade300),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: Colors.grey.shade300),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(
-                            color: Color(0xFF285D66),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                SizedBox(
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _isVoucherApplied ? null : _applyVoucher,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE0F2F1), // Light Teal
-                      foregroundColor: const Color(0xFF285D66), // Text Color
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    child: Text(
-                      _isVoucherApplied ? "Used" : "Use",
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-              ],
+            Container(
+              padding: const EdgeInsets.all(15),
+              decoration: _cardDecoration(),
+              child: Column(
+                children: widget.cartItems
+                    .map((item) => _buildOrderItem(item))
+                    .toList(),
+              ),
             ),
 
             const SizedBox(height: 25),
 
-            // Pricing details
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "Subtotal:",
-                  style: TextStyle(fontSize: 15, color: Colors.grey),
-                ),
-                Text(
-                  "Rs.${widget.totalAmount.toStringAsFixed(0)}",
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+            // --- 3. Payment Details Card (Voucher + Summary) ---
+            const Text(
+              "Payment Details",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            if (_isVoucherApplied)
-              Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      "Discount (5%):",
-                      style: TextStyle(fontSize: 15, color: Colors.green),
-                    ),
-                    Text(
-                      "-Rs.${_discountAmount.toStringAsFixed(0)}",
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: _cardDecoration(),
+              child: Column(
+                children: [
+                  // Voucher Input Area
+                  _buildVoucherRow(),
+
+                  // Feedback Text (Inline)
+                  if (_voucherFeedbackMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, left: 5),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _isVoucherError
+                                ? Icons.error_outline
+                                : Icons.check_circle,
+                            size: 16,
+                            color: _isVoucherError ? Colors.red : Colors.green,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            _voucherFeedbackMessage!,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: _isVoucherError
+                                  ? Colors.red
+                                  : Colors.green,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
-              ),
-            const Divider(height: 30),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "Order total:",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-                Text(
-                  "Rs.${finalPayableAmount.toStringAsFixed(0)}",
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF285D66),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
 
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 10,
-              offset: Offset(0, -5),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Divider(),
+                  ),
+
+                  // Pricing Breakdown
+                  _buildPriceRow("Subtotal", widget.totalAmount),
+                  const SizedBox(height: 10),
+                  _buildPriceRow("Delivery Fee", 0, isFree: true),
+
+                  // Discount Row (Only if applied)
+                  if (_isVoucherApplied) ...[
+                    const SizedBox(height: 10),
+                    _buildPriceRow(
+                      "Discount (5%)",
+                      -_discountAmount,
+                      isDiscount: true,
+                    ),
+                  ],
+
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 15),
+                    child: Divider(thickness: 1.2),
+                  ),
+
+                  // Total Amount
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "Total",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        "Rs. ${finalPayableAmount.toStringAsFixed(0)}",
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF285D66),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(height: 100),
           ],
         ),
-        child: SizedBox(
-          width: double.infinity,
-          height: 55,
-          child: ElevatedButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => PaymentMethodScreen(
-                  cartItems: widget.cartItems,
-                  totalAmount: finalPayableAmount,
-                ),
-              ),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF285D66),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(25),
-              ),
-            ),
-            child: const Text(
-              "Go to Payment",
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-                fontFamily: 'Serif',
-              ),
-            ),
-          ),
-        ),
       ),
+      bottomNavigationBar: _buildBottomBar(finalPayableAmount),
     );
   }
 
-  // --- Helper Widgets ---
+  // --- WIDGET HELPER METHODS ---
 
-  Widget _buildSectionHeader(String title, VoidCallback onEdit) {
+  BoxDecoration _cardDecoration() {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.05),
+          blurRadius: 10,
+          offset: const Offset(0, 5),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSectionHeader(
+    String title,
+    String actionLabel,
+    VoidCallback onTap,
+  ) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
           title,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            fontFamily: 'Serif',
-          ),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         TextButton(
-          onPressed: onEdit,
+          onPressed: onTap,
           style: TextButton.styleFrom(
-            backgroundColor: Colors.teal.shade50,
-            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
-            minimumSize: Size.zero,
+            padding: EdgeInsets.zero,
+            minimumSize: const Size(50, 30),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
-          child: const Text(
-            "Edit",
-            style: TextStyle(color: Color(0xFF285D66), fontSize: 12),
+          child: Text(
+            actionLabel,
+            style: const TextStyle(
+              color: Color(0xFF285D66),
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildOrderItem({
-    required String name,
-    required String brand,
-    required String price,
-    required String qty,
-    required String imageUrl,
-  }) {
-    bool isNetwork = imageUrl.toString().startsWith('http');
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
+  Widget _buildAddressCard() {
+    if (_selectedAddress == null) {
+      return GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const AddAddressScreen()),
+          ).then((_) => _loadDefaultAddress());
+        },
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 25),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.grey.shade300,
+              style: BorderStyle.solid,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                Icons.add_location_alt_outlined,
+                size: 40,
+                color: Colors.grey.shade400,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                "Add Shipping Address",
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _cardDecoration(),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 80,
-            height: 80,
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(15),
+              color: const Color(0xFFE0F2F1),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: isNetwork
-                ? Image.network(imageUrl, fit: BoxFit.cover)
-                : Image.asset(
-                    imageUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (c, o, s) => const Icon(Icons.error),
-                  ),
+            child: const Icon(Icons.location_on, color: Color(0xFF285D66)),
           ),
           const SizedBox(width: 15),
           Expanded(
@@ -468,39 +388,362 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  name,
+                  _selectedAddress!['fullName'] ?? 'Name',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 4),
                 Text(
-                  brand,
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  _selectedAddress!['email'] ?? 'Email',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 6),
                 Text(
-                  price,
+                  "${_selectedAddress!['street']}, ${_selectedAddress!['city']}",
+                  style: const TextStyle(height: 1.4, fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrderItem(Map<String, dynamic> item) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 15),
+      child: Row(
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.asset(
+                item['image'],
+                fit: BoxFit.cover,
+                errorBuilder: (c, o, s) =>
+                    const Icon(Icons.image, color: Colors.grey),
+              ),
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item['name'],
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  "Rs. ${item['price']}",
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF285D66),
-                    fontSize: 16,
                   ),
                 ),
               ],
             ),
           ),
           Text(
-            qty,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF285D66),
-              fontSize: 16,
-            ),
+            "x${item['qty']}",
+            style: const TextStyle(fontWeight: FontWeight.bold),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildVoucherRow() {
+    return Row(
+      children: [
+        Expanded(
+          child: SizedBox(
+            height: 45,
+            child: TextField(
+              controller: _voucherController,
+              enabled: !_isVoucherApplied,
+              style: const TextStyle(fontSize: 14),
+              decoration: InputDecoration(
+                hintText: "Enter Reward Code",
+                hintStyle: TextStyle(color: Colors.grey.shade400),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 15),
+                filled: true,
+                fillColor: _isVoucherApplied
+                    ? Colors.grey.shade100
+                    : Colors.grey.shade50,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+                prefixIcon: const Icon(
+                  Icons.confirmation_number_outlined,
+                  size: 18,
+                  color: Colors.grey,
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          height: 45,
+          child: ElevatedButton(
+            onPressed: _isVoucherApplied ? null : _applyVoucher,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF285D66),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+            ),
+            child: Text(_isVoucherApplied ? "Applied" : "Apply"),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPriceRow(
+    String label,
+    double amount, {
+    bool isDiscount = false,
+    bool isFree = false,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: isDiscount ? Colors.green : Colors.grey.shade600,
+            fontSize: 15,
+          ),
+        ),
+        Text(
+          isFree
+              ? "Free"
+              : (isDiscount ? "-" : "") +
+                    "Rs. ${amount.abs().toStringAsFixed(0)}",
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: isDiscount || isFree ? Colors.green : Colors.black,
+            fontSize: 15,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBottomBar(double finalAmount) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: SizedBox(
+          width: double.infinity,
+          height: 55,
+          child: ElevatedButton(
+            onPressed: () {
+              if (_selectedAddress == null) {
+                // Show clean error on button press if address missing
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Please select a delivery address"),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
+                return;
+              }
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PaymentMethodScreen(
+                    cartItems: widget.cartItems,
+                    totalAmount: finalAmount,
+                    selectedAddress: _selectedAddress!,
+                  ),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF285D66),
+              elevation: 5,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+            ),
+            child: const Text(
+              "Continue to Payment",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- ADDRESS SELECTION SHEET ---
+  void _showAddressSelectionDialog() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true, // For better height control
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          height: MediaQuery.of(context).size.height * 0.7,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    "Select Address",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const AddAddressScreen(),
+                        ),
+                      ).then((_) => _loadDefaultAddress());
+                    },
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text(
+                      "Add New",
+                      style: TextStyle(color: Color(0xFF285D66)),
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(userId)
+                      .collection('addresses')
+                      .orderBy('timestamp', descending: true)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      return const Center(
+                        child: Text("No addresses found. Add one!"),
+                      );
+                    }
+
+                    var docs = snapshot.data!.docs;
+                    return ListView.separated(
+                      itemCount: docs.length,
+                      separatorBuilder: (c, i) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        var data = docs[index].data() as Map<String, dynamic>;
+                        bool isSelected =
+                            _selectedAddress != null &&
+                            _selectedAddress!['street'] == data['street'];
+
+                        return InkWell(
+                          onTap: () {
+                            setState(() => _selectedAddress = data);
+                            Navigator.pop(context);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(15),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? const Color(0xFFE0F2F1)
+                                  : Colors.white,
+                              border: Border.all(
+                                color: isSelected
+                                    ? const Color(0xFF285D66)
+                                    : Colors.grey.shade300,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  isSelected
+                                      ? Icons.radio_button_checked
+                                      : Icons.radio_button_off,
+                                  color: const Color(0xFF285D66),
+                                ),
+                                const SizedBox(width: 15),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        data['fullName'] ?? 'Name',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Text(
+                                        "${data['street']}, ${data['city']}",
+                                        style: const TextStyle(
+                                          color: Colors.black54,
+                                          fontSize: 13,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

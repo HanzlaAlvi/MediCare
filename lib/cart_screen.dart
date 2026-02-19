@@ -21,10 +21,10 @@ class _CartScreenState extends State<CartScreen> {
 
     String p = price.toString().toLowerCase();
 
-    // 1. Pehle "rs." ya "rs" ko specifically remove karein
+    // 1. Remove specific strings
     p = p.replaceAll('rs.', '').replaceAll('rs', '').replaceAll('pkr', '');
 
-    // 2. Ab baqi kachra (spaces waghera) saaf karein, sirf numbers aur dot chorein
+    // 2. Clean spaces/extra characters, keep only numbers and dot
     p = p.replaceAll(RegExp(r'[^0-9.]'), '');
 
     return double.tryParse(p) ?? 0.0;
@@ -96,7 +96,9 @@ class _CartScreenState extends State<CartScreen> {
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+              child: CircularProgressIndicator(color: Color(0xFF285D66)),
+            );
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             return const Center(child: Text("Cart is Empty"));
@@ -108,15 +110,8 @@ class _CartScreenState extends State<CartScreen> {
 
           for (var doc in cartDocs) {
             var data = doc.data() as Map<String, dynamic>;
-
             double price = parsePrice(data['price']);
             int qty = parseQty(data['qty']);
-
-            // Ab ye console mein sahi 780 print karega
-            debugPrint(
-              "Item: ${data['name']} | Cleaned Price: $price | Qty: $qty | Total: ${price * qty}",
-            );
-
             subtotal += (price * qty);
           }
 
@@ -133,10 +128,43 @@ class _CartScreenState extends State<CartScreen> {
                       const Divider(height: 30, color: Colors.transparent),
                   itemBuilder: (context, index) {
                     var data = cartDocs[index].data() as Map<String, dynamic>;
-                    return _buildCartItem(data, cartDocs[index].id);
+                    String docId = cartDocs[index].id;
+
+                    // --- NEW: SWIPE TO DELETE ---
+                    return Dismissible(
+                      key: Key(docId),
+                      direction:
+                          DismissDirection.endToStart, // Swipe Right to Left
+                      onDismissed: (direction) {
+                        _removeItem(docId);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text("${data['name']} removed from cart"),
+                            backgroundColor: Colors.redAccent,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent,
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: const Icon(
+                          Icons.delete_sweep,
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                      ),
+                      child: _buildCartItem(data, docId),
+                    );
                   },
                 ),
               ),
+
+              // Bottom Summary Section
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -155,37 +183,30 @@ class _CartScreenState extends State<CartScreen> {
                       "Item(s) total:",
                       "Rs.${subtotal.toStringAsFixed(0)}",
                     ),
-
                     _buildSummaryRow(
                       "Subtotal:",
                       "Rs.${subtotal.toStringAsFixed(0)}",
                     ),
-
                     const SizedBox(height: 5),
                     const Divider(),
                     const SizedBox(height: 5),
-
                     _buildSummaryRow(
                       "Shipping:",
                       "FREE",
                       valueColor: Colors.green,
                     ),
-
                     _buildSummaryRow(
                       "Sales tax:",
                       "Rs.${salesTax.toStringAsFixed(0)}",
                     ),
-
                     const SizedBox(height: 10),
                     const Divider(),
                     const SizedBox(height: 10),
-
                     _buildSummaryRow(
                       "Order total:",
                       "Rs.${orderTotal.toStringAsFixed(0)}",
                       isTotal: true,
                     ),
-
                     const SizedBox(height: 20),
                     SizedBox(
                       width: double.infinity,
@@ -233,7 +254,6 @@ class _CartScreenState extends State<CartScreen> {
 
   Widget _buildCartItem(Map<String, dynamic> item, String docId) {
     bool isNetwork = item['image'].toString().startsWith('http');
-
     int qty = parseQty(item['qty']);
     double unitPrice = parsePrice(item['price']);
 
@@ -247,7 +267,10 @@ class _CartScreenState extends State<CartScreen> {
             borderRadius: BorderRadius.circular(10),
           ),
           child: isNetwork
-              ? Image.network(item['image'], fit: BoxFit.cover)
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(item['image'], fit: BoxFit.cover),
+                )
               : Image.asset(
                   item['image'],
                   fit: BoxFit.cover,
