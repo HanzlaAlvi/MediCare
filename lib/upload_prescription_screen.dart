@@ -7,7 +7,9 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import 'prescription_detail_screen.dart';
 
 class UploadPrescriptionScreen extends StatefulWidget {
-  const UploadPrescriptionScreen({super.key});
+  final bool isFromTab; // 🎯 Logic to handle back button visibility
+
+  const UploadPrescriptionScreen({super.key, this.isFromTab = false});
 
   @override
   State<UploadPrescriptionScreen> createState() =>
@@ -42,7 +44,10 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
         child: Wrap(
           children: [
             ListTile(
-              leading: const Icon(Icons.photo_library, color: Color(0xFF285D66)),
+              leading: const Icon(
+                Icons.photo_library,
+                color: Color(0xFF285D66),
+              ),
               title: const Text('Pick from Gallery'),
               onTap: () {
                 Navigator.pop(context);
@@ -64,7 +69,9 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
   }
 
   // --- NEW: CHECK DB AVAILABILITY ---
-  Future<List<Map<String, dynamic>>> _checkMedicineAvailability(List<String> medNames) async {
+  Future<List<Map<String, dynamic>>> _checkMedicineAvailability(
+    List<String> medNames,
+  ) async {
     List<Map<String, dynamic>> results = [];
     final db = FirebaseFirestore.instance;
 
@@ -72,11 +79,9 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
       String cleanName = medName.trim();
       if (cleanName.isEmpty) continue;
 
-      // Check Database (Assumes 'name' field exists in 'medicines')
-      // Note: This is case-sensitive. Ideally, store lowercase names in DB for searching.
       final querySnapshot = await db
           .collection('medicines')
-          .where('name', isEqualTo: cleanName) 
+          .where('name', isEqualTo: cleanName)
           .limit(1)
           .get();
 
@@ -86,10 +91,7 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
         if (stock > 0) isAvailable = true;
       }
 
-      results.add({
-        'name': cleanName,
-        'isAvailable': isAvailable,
-      });
+      results.add({'name': cleanName, 'isAvailable': isAvailable});
     }
     return results;
   }
@@ -97,7 +99,9 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
   Future<void> _submitPrescription() async {
     if (_selectedImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please upload a prescription image first!")),
+        const SnackBar(
+          content: Text("Please upload a prescription image first!"),
+        ),
       );
       return;
     }
@@ -107,20 +111,18 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
     try {
       // --- 1. GEMINI AI ANALYSIS ---
       final model = GenerativeModel(
-        model: 'gemini-2.5-flash-lite',
+        model: 'gemini-1.5-flash', // Updated to a more stable model version
         apiKey: _apiKey,
       );
       final imageBytes = await _selectedImage!.readAsBytes();
 
-      // Updated Prompt to extract Medicines List
       final prompt = TextPart(
         "Act as a strict Senior Doctor. Analyze this image.\n"
         "1. STATUS: Check if it's a valid prescription. Set 'Approved' or 'Rejected'.\n"
         "2. DOCTOR: Extract Doctor Name.\n"
         "3. MEDICINES: Extract list of medicine names ONLY (comma separated).\n"
         "4. COMMENT: Write a short summary.\n\n"
-        "Output format: Status: [Value] | Doctor: [Name] | Medicines: [Med1, Med2, Med3] | Comment: [Text] and proper medicines name enlist them",
-        
+        "Output format: Status: [Value] | Doctor: [Name] | Medicines: [Med1, Med2, Med3] | Comment: [Text]",
       );
 
       final content = [
@@ -145,10 +147,8 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
           } else if (part.startsWith("Doctor:")) {
             doctor = part.replaceAll("Doctor:", "").trim();
           } else if (part.startsWith("Medicines:")) {
-            // Extract CSV list
             String medString = part.replaceAll("Medicines:", "").trim();
-            // Remove brackets if Gemini adds them [ ]
-            medString = medString.replaceAll('[', '').replaceAll(']', ''); 
+            medString = medString.replaceAll('[', '').replaceAll(']', '');
             extractedMeds = medString.split(',').map((e) => e.trim()).toList();
           } else if (part.startsWith("Comment:")) {
             comment = part.replaceAll("Comment:", "").trim();
@@ -161,11 +161,13 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
       }
 
       // --- 3. CHECK AVAILABILITY IN FIRESTORE ---
-      List<Map<String, dynamic>> finalMedicineData = await _checkMedicineAvailability(extractedMeds);
-
-      // Append availability info to comment for better UX
-      int availableCount = finalMedicineData.where((m) => m['isAvailable'] == true).length;
-      comment += "\n\nFound ${extractedMeds.length} medicines. $availableCount are available in stock.";
+      List<Map<String, dynamic>> finalMedicineData =
+          await _checkMedicineAvailability(extractedMeds);
+      int availableCount = finalMedicineData
+          .where((m) => m['isAvailable'] == true)
+          .length;
+      comment +=
+          "\n\nFound ${extractedMeds.length} medicines. $availableCount are available in stock.";
 
       // --- 4. SAVE TO FIREBASE ---
       final user = FirebaseAuth.instance.currentUser;
@@ -181,9 +183,10 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
           'status': status,
           'doctor': doctor,
           'comment': comment,
-          'extractedMedicines': finalMedicineData, // Saving detailed list
+          'extractedMedicines': finalMedicineData,
           'note': _notesController.text,
-          'date': "${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}",
+          'date':
+              "${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}",
           'timestamp': FieldValue.serverTimestamp(),
           'localPath': _selectedImage!.path,
           'imageUrl': 'https://via.placeholder.com/400?text=Prescription',
@@ -195,13 +198,16 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => PrescriptionDetailScreen(data: prescriptionData),
+            builder: (context) =>
+                PrescriptionDetailScreen(data: prescriptionData),
           ),
         );
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -217,14 +223,21 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
         backgroundColor: const Color(0xFF285D66),
         foregroundColor: Colors.white,
         centerTitle: true,
-        title: const Text("Upload Prescription", style: TextStyle(fontWeight: FontWeight.bold)),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios),
-          onPressed: () => Navigator.pop(context),
+        title: const Text(
+          "Upload Prescription",
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
+        // 🎯 Show back button only if NOT opened from the bottom tab
+        leading: widget.isFromTab
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back_ios),
+                onPressed: () => Navigator.pop(context),
+              ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        // Padding bottom added so button doesn't hide behind floating nav bar
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -238,35 +251,59 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
                   borderRadius: BorderRadius.circular(15),
                   color: Colors.grey.shade50,
                   image: _selectedImage != null
-                      ? DecorationImage(image: FileImage(_selectedImage!), fit: BoxFit.cover)
+                      ? DecorationImage(
+                          image: FileImage(_selectedImage!),
+                          fit: BoxFit.cover,
+                        )
                       : null,
                 ),
                 child: _selectedImage == null
                     ? Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: const [
-                          Icon(Icons.upload_file, size: 50, color: Color(0xFF285D66)),
+                          Icon(
+                            Icons.upload_file,
+                            size: 50,
+                            color: Color(0xFF285D66),
+                          ),
                           SizedBox(height: 10),
-                          Text("Upload prescription image", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                          Text("Supported formats: JPG, PNG", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                          Text(
+                            "Upload prescription image",
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            "Supported formats: JPG, PNG",
+                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
                         ],
                       )
                     : null,
               ),
             ),
             const SizedBox(height: 25),
-            const Text("Doctor's Name", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+            const Text(
+              "Doctor's Name",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            ),
             const SizedBox(height: 10),
             TextField(
               controller: _doctorController,
               decoration: InputDecoration(
                 hintText: "Optional (AI will detect)",
                 hintStyle: const TextStyle(color: Colors.grey),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
             const SizedBox(height: 20),
-            const Text("Additional Notes", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+            const Text(
+              "Additional Notes",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            ),
             const SizedBox(height: 10),
             TextField(
               controller: _notesController,
@@ -274,7 +311,9 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
               decoration: InputDecoration(
                 hintText: "Add any Description...",
                 hintStyle: const TextStyle(color: Colors.grey),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
             const SizedBox(height: 20),
@@ -288,9 +327,17 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: const [
-                  Text("Important Guidelines", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00695C))),
+                  Text(
+                    "Important Guidelines",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF00695C),
+                    ),
+                  ),
                   SizedBox(height: 10),
-                  _GuidelineItem(text: "Ensure prescription is clearly visible"),
+                  _GuidelineItem(
+                    text: "Ensure prescription is clearly visible",
+                  ),
                   _GuidelineItem(text: "All doctor details must be visible"),
                 ],
               ),
@@ -303,11 +350,20 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
                 onPressed: _isLoading ? null : _submitPrescription,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF285D66),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25),
+                  ),
                 ),
                 child: _isLoading
                     ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("Submit Prescription", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                    : const Text(
+                        "Submit Prescription",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
               ),
             ),
           ],
@@ -327,8 +383,16 @@ class _GuidelineItem extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("• ", style: TextStyle(color: Color(0xFF00695C), fontWeight: FontWeight.bold)),
-          Expanded(child: Text(text, style: const TextStyle(color: Color(0xFF004D40)))),
+          const Text(
+            "• ",
+            style: TextStyle(
+              color: Color(0xFF00695C),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Expanded(
+            child: Text(text, style: const TextStyle(color: Color(0xFF004D40))),
+          ),
         ],
       ),
     );

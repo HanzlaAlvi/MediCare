@@ -1,242 +1,205 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'home_controller.dart';
 import 'cart_screen.dart';
 import 'notification_screen.dart';
 
-// --- 1. CUSTOM APP BAR (With Search & Actions) ---
+// --- CUSTOM APP BAR ---
 class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
-  final Function(String) onSearchChanged;
-  final VoidCallback onClearSearch;
-  final String searchQuery;
-  final TextEditingController searchController;
-
-  const HomeAppBar({
-    super.key,
-    required this.onSearchChanged,
-    required this.onClearSearch,
-    required this.searchQuery,
-    required this.searchController,
-  });
+  const HomeAppBar({super.key}); // Yeh line add karein
+  @override
+  Size get preferredSize => const Size.fromHeight(70);
 
   @override
   Widget build(BuildContext context) {
+    final controller = Get.find<HomeController>();
     String userId = FirebaseAuth.instance.currentUser?.uid ?? "";
 
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 0,
       scrolledUnderElevation: 0,
+      titleSpacing: 10,
       title: Container(
-        height: 45,
+        height: 48,
         decoration: BoxDecoration(
           color: Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(15),
         ),
         child: TextField(
-          controller: searchController,
-          onChanged: onSearchChanged,
+          controller: controller.searchController,
+          focusNode: controller.searchFocusNode,
+          onChanged: controller.updateSearch,
+          onSubmitted: (_) => controller.searchFocusNode.unfocus(),
           decoration: InputDecoration(
             hintText: 'Search medicines...',
-            prefixIcon: const Icon(Icons.search, color: Colors.grey),
-            suffixIcon: searchQuery.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear, size: 18, color: Colors.grey),
-                    onPressed: onClearSearch,
-                  )
-                : null,
+            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+            prefixIcon: const Icon(
+              Icons.search,
+              color: Color(0xFF285D66),
+              size: 22,
+            ),
+            suffixIcon: Obx(
+              () => controller.searchQuery.value.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(
+                        Icons.clear,
+                        size: 18,
+                        color: Colors.grey,
+                      ),
+                      onPressed: controller.clearSearch,
+                    )
+                  : const SizedBox(),
+            ),
             border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            contentPadding: const EdgeInsets.symmetric(vertical: 12),
           ),
         ),
       ),
       actions: [
-        // Cart Badge
-        StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('users')
-              .doc(userId)
-              .collection('cart')
-              .snapshots(),
-          builder: (context, snapshot) {
-            int count = snapshot.hasData ? snapshot.data!.docs.length : 0;
-            return Badge(
-              label: Text("$count"),
-              isLabelVisible: count > 0,
-              backgroundColor: Colors.redAccent,
-              child: IconButton(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (c) => const CartScreen()),
-                ),
-                icon: const Icon(
-                  Icons.shopping_bag_outlined,
-                  color: Color(0xFF285D66),
-                ),
-              ),
-            );
-          },
+        _buildActionIcon(
+          icon: Icons.shopping_bag_outlined,
+          onTap: () => Get.to(() => const CartScreen()),
+          showBadge: true,
+          userId: userId,
         ),
-        // Notification Icon
-        IconButton(
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (c) => const NotificationScreen()),
-          ),
-          icon: const Icon(Icons.notifications_none, color: Color(0xFF285D66)),
+        _buildActionIcon(
+          icon: Icons.notifications_none_outlined,
+          onTap: () => Get.to(() => const NotificationScreen()),
+          showBadge: false,
+          userId: userId,
         ),
         const SizedBox(width: 10),
       ],
     );
   }
 
-  @override
-  Size get preferredSize => const Size.fromHeight(60);
-}
-
-// --- 2. BANNER WIDGET ---
-class PromoBanner extends StatelessWidget {
-  const PromoBanner({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      height: 150,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(15),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF285D66), Color(0xFF4DB6AC)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+  Widget _buildActionIcon({
+    required IconData icon,
+    required VoidCallback onTap,
+    required bool showBadge,
+    required String userId,
+  }) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        IconButton(
+          onPressed: onTap,
+          icon: Icon(icon, color: const Color(0xFF285D66), size: 28),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF285D66).withValues(alpha: 0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          const Positioned(
-            left: 20,
-            top: 35,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Get 5% OFF",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+        if (showBadge)
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(userId)
+                .collection('cart')
+                .snapshots(),
+            builder: (context, snapshot) {
+              int count = snapshot.hasData ? snapshot.data!.docs.length : 0;
+              if (count == 0) return const SizedBox();
+              return Positioned(
+                right: 8,
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Colors.redAccent,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
+                  child: Text(
+                    "$count",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ),
-                SizedBox(height: 5),
-                Text(
-                  "On getting 100 points",
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
-                ),
-              ],
-            ),
+              );
+            },
           ),
-          Positioned(
-            right: 10,
-            bottom: 0,
-            child: Icon(
-              Icons.local_pharmacy,
-              size: 100,
-              color: Colors.white.withValues(alpha: 0.2),
-            ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 }
 
-// --- 3. CATEGORY CHIPS ---
+// --- CATEGORY SELECTOR ---
 class CategorySelector extends StatelessWidget {
-  final String selectedCategory;
-  final Function(String) onCategorySelected;
-
-  const CategorySelector({
-    super.key,
-    required this.selectedCategory,
-    required this.onCategorySelected,
-  });
-
-  IconData _getCategoryIcon(String label) {
-    switch (label) {
-      case 'Tablets':
-        return Icons.medication;
-      case 'Syrup':
-        return Icons.local_drink;
-      case 'Painkiller':
-        return Icons.healing;
-      case 'Vitamins':
-        return Icons.bolt;
-      default:
-        return Icons.grid_view;
-    }
-  }
-
+  const CategorySelector({super.key}); // Yeh line add karein
   @override
   Widget build(BuildContext context) {
+    final controller = Get.find<HomeController>();
     final categories = ['All', 'Tablets', 'Syrup', 'Painkiller', 'Vitamins'];
+
     return SizedBox(
-      height: 45,
+      height: 65,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         itemCount: categories.length,
         itemBuilder: (context, index) {
-          bool isSelected = selectedCategory == categories[index];
-          return GestureDetector(
-            onTap: () => onCategorySelected(categories[index]),
-            child: Container(
-              margin: const EdgeInsets.only(right: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFF285D66) : Colors.white,
-                borderRadius: BorderRadius.circular(25),
-                border: Border.all(
-                  color: isSelected ? Colors.transparent : Colors.grey.shade300,
+          return Obx(() {
+            bool isSelected =
+                controller.selectedCategory.value == categories[index];
+            return GestureDetector(
+              onTap: () =>
+                  controller.selectedCategory.value = categories[index],
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.only(right: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                decoration: BoxDecoration(
+                  color: isSelected ? const Color(0xFF285D66) : Colors.white,
+                  borderRadius: BorderRadius.circular(15),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: const Color(
+                              0xFF285D66,
+                            ).withValues(alpha: 0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ]
+                      : [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                 ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _getCategoryIcon(categories[index]),
-                    size: 18,
-                    color: isSelected ? Colors.white : Colors.grey,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
+                child: Center(
+                  child: Text(
                     categories[index],
                     style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: isSelected ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.bold,
+                      color: isSelected ? Colors.white : Colors.grey.shade600,
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
-          );
+            );
+          });
         },
       ),
     );
   }
 }
 
-// --- 4. MEDICINE CARD ---
+// --- MEDICINE CARD ---
 class MedicineCard extends StatelessWidget {
   final String name, brand, price, rating, imageUrl;
   final Color color;
   final VoidCallback onCartTap;
+  final VoidCallback onTap;
 
   const MedicineCard({
     super.key,
@@ -247,115 +210,159 @@ class MedicineCard extends StatelessWidget {
     required this.color,
     required this.imageUrl,
     required this.onCartTap,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    bool isNetwork = imageUrl.startsWith('http');
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.shade200,
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 3,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(20),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.shade200,
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 3,
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
+                ),
+                child: Hero(
+                  tag: name,
+                  child: imageUrl.startsWith('http')
+                      ? Image.network(imageUrl, fit: BoxFit.contain)
+                      : Image.asset(imageUrl, fit: BoxFit.contain),
                 ),
               ),
-              child: Hero(
-                tag: name,
-                child: isNetwork
-                    ? Image.network(imageUrl, fit: BoxFit.contain)
-                    : Image.asset(
-                        imageUrl,
-                        fit: BoxFit.contain,
-                        errorBuilder: (c, e, s) => const Icon(
-                          Icons.image,
-                          size: 50,
-                          color: Colors.grey,
+            ),
+            Expanded(
+              flex: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          brand.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey.shade500,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          price,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: Color(0xFF285D66),
+                          ),
+                        ),
+                        InkWell(
+                          onTap: onCartTap,
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF285D66),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.add,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- PROMO BANNER ---
+class PromoBanner extends StatelessWidget {
+  const PromoBanner({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      height: 140,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF285D66), Color(0xFF4DB6AC)],
+        ),
+      ),
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: const [
+                Text(
+                  "Get 5% OFF",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  "On your first prescription upload",
+                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+              ],
+            ),
           ),
-          Expanded(
-            flex: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        brand.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.grey.shade500,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        price,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          color: Color(0xFF285D66),
-                        ),
-                      ),
-                      InkWell(
-                        onTap: onCartTap,
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF285D66),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.add,
-                            color: Colors.white,
-                            size: 16,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+          Positioned(
+            right: -20,
+            bottom: -20,
+            child: Icon(
+              Icons.local_pharmacy,
+              size: 120,
+              color: Colors.white.withValues(alpha: 0.1),
             ),
           ),
         ],

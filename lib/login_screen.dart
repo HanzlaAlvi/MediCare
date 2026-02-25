@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 Firestore import zaroori hai
 import 'signup_screen.dart';
 import 'home_screen.dart';
+import 'admin/admin_dashboard.dart'; // 👈 Admin Dashboard import karein
 import 'components.dart';
-// Forgot Password screen ka import zaroor lagayein (jis file mein save kiya ho)
 import 'forgot_password_flow.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -14,10 +15,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // Controllers
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-
   bool _isLoading = false;
 
   Future<void> _handleLogin() async {
@@ -31,35 +30,71 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
+      // 1. Firebase Auth se Login
+      UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          );
 
-      setState(() => _isLoading = false);
+      // 2. Firestore se User ka Role check karna
+      String uid = userCredential.user!.uid;
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
 
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-        );
+        setState(() => _isLoading = false);
+
+        if (userDoc.exists) {
+          // Check role field (Make sure aapke DB mein field ka naam 'role' hi ho)
+          String role = userDoc.get('role') ?? 'user';
+
+          if (role == 'admin') {
+            // Redirect to Admin Side
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => const AdminDashboard()),
+              (route) => false,
+            );
+          } else {
+            // Redirect to User Side
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+              (route) => false,
+            );
+          }
+        } else {
+          // Agar user auth mein hai par firestore mein nahi
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("User data not found in database.")),
+          );
+        }
       }
     } on FirebaseAuthException catch (e) {
-      setState(() => _isLoading = false);
-      String errorMessage = "Login Failed";
-
-      if (e.code == 'user-not-found') {
-        errorMessage = "No user found for that email.";
-      } else if (e.code == 'wrong-password') {
-        errorMessage = "Wrong password provided.";
-      } else if (e.code == 'invalid-email') {
-        errorMessage = "The email address is badly formatted.";
-      }
-
       if (mounted) {
+        setState(() => _isLoading = false);
+        String errorMessage = "Login Failed";
+        if (e.code == 'user-not-found')
+          {errorMessage = "No user found for that email.";}
+        else if (e.code == 'wrong-password'){
+          errorMessage = "Wrong password provided.";}
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error: ${e.toString()}"),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -69,11 +104,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // build method remains mostly same
     return Scaffold(
       backgroundColor: const Color(0xFFADDDE6),
       body: Stack(
         children: [
-          const BackgroundCurve(), // Make sure BackgroundCurve exists in components.dart
+          const BackgroundCurve(),
           Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 30),
@@ -84,26 +120,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     'Login',
                     style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 10),
                   const Text(
                     'Sign in with your account',
                     style: TextStyle(fontSize: 16, color: Colors.black54),
                   ),
                   const SizedBox(height: 40),
-
-                  // Email Field
                   MyTextField(hint: 'email', controller: _emailController),
                   const SizedBox(height: 20),
-
-                  // Password Field
                   MyTextField(
                     hint: 'password',
                     isPassword: true,
                     controller: _passwordController,
                   ),
                   const SizedBox(height: 30),
-
-                  // Login Button
                   SizedBox(
                     width: double.infinity,
                     height: 55,
@@ -128,21 +157,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
-
-                  // Sign Up Link
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Text("Don't have an account? "),
                       GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const SignupScreen(),
-                            ),
-                          );
-                        },
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const SignupScreen(),
+                          ),
+                        ),
                         child: const Text(
                           "Sign up",
                           style: TextStyle(
@@ -154,17 +179,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                   ),
                   const SizedBox(height: 15),
-
                   GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              const ForgotPasswordEmailScreen(),
-                        ),
-                      );
-                    },
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ForgotPasswordEmailScreen(),
+                      ),
+                    ),
                     child: const Text(
                       "Forgot Your Password?",
                       style: TextStyle(

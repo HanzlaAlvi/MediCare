@@ -538,8 +538,7 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
         Text(
           isFree
               ? "Free"
-              : (isDiscount ? "-" : "") +
-                    "Rs. ${amount.abs().toStringAsFixed(0)}",
+              : "${isDiscount ? "-" : ""}Rs. ${amount.abs().toStringAsFixed(0)}",
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: isDiscount || isFree ? Colors.green : Colors.black,

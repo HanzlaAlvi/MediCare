@@ -1,152 +1,19 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:math'; // Random code ke liye
-import 'reward_success_screen.dart';
+import 'package:get/get.dart';
+import 'rewards_controller.dart';
 
-class OffersCouponsScreen extends StatefulWidget {
+class OffersCouponsScreen extends StatelessWidget {
   const OffersCouponsScreen({super.key});
 
   @override
-  State<OffersCouponsScreen> createState() => _OffersCouponsScreenState();
-}
-
-class _OffersCouponsScreenState extends State<OffersCouponsScreen> {
-  final User? user = FirebaseAuth.instance.currentUser;
-
-  // --- Naya code generate karne ka helper ---
-  String _generateRandomCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    return "MED-${List.generate(6, (index) => chars[Random().nextInt(chars.length)]).join()}";
-  }
-
-  // --- Agar code missing ho to auto-generate karke DB mein save karein ---
-  Future<void> _ensureCodeExists(Map<String, dynamic>? data) async {
-    if (data == null ||
-        data['referralCode'] == null ||
-        data['referralCode'] == "") {
-      final userRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(user!.uid);
-      await userRef.update({'referralCode': _generateRandomCode()});
-    }
-  }
-
-  Future<void> _claimDailyReward(int currentStreak, int pointsBalance) async {
-    if (user == null) return;
-    final userRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user!.uid);
-    DateTime now = DateTime.now();
-
-    try {
-      var prescriptionCheck = await userRef
-          .collection('prescriptions')
-          .limit(1)
-          .get();
-      if (prescriptionCheck.docs.isEmpty) {
-        if (mounted) {
-          _showCustomSheet(
-            "Unlock Rewards",
-            "Pehle ek prescription upload karein! 💊",
-            Icons.lock_outline,
-          );
-        }
-        return;
-      }
-
-      int dayNumber = currentStreak + 1;
-      int rewardPoints = (dayNumber == 7) ? 100 : dayNumber * 10;
-
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        DocumentSnapshot snapshot = await transaction.get(userRef);
-        if (!snapshot.exists) return;
-
-        var data = snapshot.data() as Map<String, dynamic>;
-        Timestamp? lastCheckIn = data['lastCheckIn'];
-
-        if (lastCheckIn != null) {
-          DateTime lastDate = lastCheckIn.toDate();
-          if (lastDate.day == now.day &&
-              lastDate.month == now.month &&
-              lastDate.year == now.year) {
-            throw Exception("Aaj ka reward aap le chukay hain!");
-          }
-        }
-
-        transaction.update(userRef, {
-          'points': pointsBalance + rewardPoints,
-          'streak': (dayNumber >= 7) ? 0 : dayNumber,
-          'lastCheckIn': Timestamp.fromDate(now),
-        });
-
-        transaction.set(userRef.collection('point_history').doc(), {
-          'title': "Day $dayNumber Bonus",
-          'points': "+$rewardPoints",
-          'type': 'credit',
-          'date': now,
-        });
-      });
-
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (c) => RewardSuccessScreen(
-              rewardName: "Day $dayNumber Reward",
-              cost: "$rewardPoints Pts Added",
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted){
-        _showCustomSheet(
-          "Oops!",
-          e.toString().replaceAll("Exception: ", ""),
-          Icons.info_outline,
-        );}
-    }
-  }
-
-  void _showCustomSheet(String title, String msg, IconData icon) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-      ),
-      builder: (c) => Padding(
-        padding: const EdgeInsets.all(25),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 50, color: const Color(0xFF285D66)),
-            const SizedBox(height: 15),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              msg,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (user == null){
-      return const Scaffold(body: Center(child: Text("Login Required")));
-  }
+    // Controller initialize
+    final controller = Get.put(RewardsController());
+    final size = MediaQuery.of(context).size;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F7),
+      backgroundColor: const Color(0xFFF8FAFB),
       appBar: AppBar(
         elevation: 0,
         backgroundColor: const Color(0xFF285D66),
@@ -156,89 +23,77 @@ class _OffersCouponsScreenState extends State<OffersCouponsScreen> {
         ),
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios),
-          color: Colors.white,
-          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          onPressed: () => Get.back(),
         ),
       ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(user!.uid)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData){            
-            return const Center(child: CircularProgressIndicator());
-          }
-          var userData = snapshot.data!.data() as Map<String, dynamic>?;
-
-          // --- AUTO FIX TRIGGER ---
-          _ensureCodeExists(userData);
-
-          int points = userData?['points'] ?? 0;
-          int streak = userData?['streak'] ?? 0;
-          String refCode = userData?['referralCode'] ?? "Generating...";
-          Timestamp? lastCheckIn = userData?['lastCheckIn'];
-
-          bool isClaimedToday = false;
-          if (lastCheckIn != null) {
-            DateTime lastDate = lastCheckIn.toDate();
-            DateTime now = DateTime.now();
-            isClaimedToday =
-                (lastDate.day == now.day &&
-                lastDate.month == now.month &&
-                lastDate.year == now.year);
-          }
-
-          return SingleChildScrollView(
-            child: Column(
-              children: [
-                _buildHeaderCard(points, refCode),
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "Daily Jackpot",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _buildStreakGrid(streak, isClaimedToday, points),
-                      const SizedBox(height: 30),
-                      const Text(
-                        "Locked Coupons",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _buildCouponItem(
-                        "5% Discount Code (100 Pts)",
-                        100,
-                        points,
-                        Icons.local_offer_outlined,
-                        Colors.orange,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+      body: Obx(() {
+        if (controller.isLoading.value) {
+          return const Center(
+            child: CircularProgressIndicator(color: Color(0xFF285D66)),
           );
-        },
-      ),
+        }
+
+        return SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Column(
+            children: [
+              _buildResponsiveHeader(controller, size),
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: size.width * 0.05,
+                  vertical: 20,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Daily Jackpot",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildStreakCard(controller, size),
+                    const SizedBox(height: 30),
+                    const Text(
+                      "Special Offers",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildCouponItem(
+                      "5% Discount Code",
+                      100,
+                      controller.points.value,
+                      Icons.local_offer,
+                      Colors.orange,
+                    ),
+                    _buildCouponItem(
+                      "Free Consultation",
+                      500,
+                      controller.points.value,
+                      Icons.medical_services,
+                      Colors.blue,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
     );
   }
 
-  Widget _buildHeaderCard(int points, String code) {
+  // --- Responsive Header ---
+  Widget _buildResponsiveHeader(RewardsController controller, Size size) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(25),
+      padding: EdgeInsets.only(bottom: 30, top: 10),
       decoration: const BoxDecoration(
         color: Color(0xFF285D66),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(35)),
@@ -246,19 +101,19 @@ class _OffersCouponsScreenState extends State<OffersCouponsScreen> {
       child: Column(
         children: [
           const Text(
-            "Total Reward Points",
-            style: TextStyle(color: Colors.white70),
+            "Points Balance",
+            style: TextStyle(color: Colors.white70, fontSize: 16),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.stars_rounded, color: Colors.amber, size: 35),
+              const Icon(Icons.stars_rounded, color: Colors.amber, size: 40),
               const SizedBox(width: 10),
               Text(
-                "$points",
+                "${controller.points.value}",
                 style: const TextStyle(
-                  fontSize: 45,
+                  fontSize: 48,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                 ),
@@ -266,37 +121,38 @@ class _OffersCouponsScreenState extends State<OffersCouponsScreen> {
             ],
           ),
           const SizedBox(height: 20),
+          // Referral Code Box
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(15),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  "Your Code: ",
-                  style: TextStyle(color: Colors.white),
-                ),
                 Text(
-                  code,
+                  controller.referralCode.value,
                   style: const TextStyle(
                     color: Colors.amber,
                     fontWeight: FontWeight.bold,
-                    fontSize: 18,
+                    fontSize: 16,
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.copy, color: Colors.white, size: 18),
-                  onPressed: () {
-                    if (code != "Generating...") {
-                      Clipboard.setData(ClipboardData(text: code));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Code Copied!")),
-                      );
-                    }
+                const SizedBox(width: 10),
+                GestureDetector(
+                  onTap: () {
+                    Clipboard.setData(
+                      ClipboardData(text: controller.referralCode.value),
+                    );
+                    Get.snackbar(
+                      "Copied",
+                      "Referral code copied to clipboard",
+                      snackPosition: SnackPosition.BOTTOM,
+                      backgroundColor: Colors.white,
+                    );
                   },
+                  child: const Icon(Icons.copy, color: Colors.white, size: 18),
                 ),
               ],
             ),
@@ -306,8 +162,8 @@ class _OffersCouponsScreenState extends State<OffersCouponsScreen> {
     );
   }
 
-  // --- Baqi Widgets same rahenge (_buildStreakGrid aur _buildCouponItem) ---
-  Widget _buildStreakGrid(int streak, bool claimed, int balance) {
+  // --- Streak Card ---
+  Widget _buildStreakCard(RewardsController controller, Size size) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -322,61 +178,72 @@ class _OffersCouponsScreenState extends State<OffersCouponsScreen> {
       ),
       child: Column(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(7, (index) {
-              int dayPts = (index == 6) ? 100 : (index + 1) * 10;
-              bool isActive = index == streak;
-              bool isDone = index < streak;
-              return Column(
-                children: [
-                  Text(
-                    "+$dayPts",
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: isActive ? Colors.orange : Colors.grey,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  CircleAvatar(
-                    radius: 18,
-                    backgroundColor: isDone
-                        ? const Color(0xFF285D66)
-                        : (isActive ? Colors.amber : Colors.grey.shade100),
-                    child: isDone
-                        ? const Icon(Icons.check, size: 16, color: Colors.white)
-                        : Text(
-                            "${index + 1}",
-                            style: TextStyle(
-                              color: isActive ? Colors.white : Colors.black,
-                            ),
-                          ),
-                  ),
-                ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: List.generate(7, (index) {
+                  bool isDone = index < controller.streak.value;
+                  bool isCurrent = index == controller.streak.value;
+                  return Column(
+                    children: [
+                      Text(
+                        "+${(index == 6) ? 100 : (index + 1) * 10}",
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isCurrent ? Colors.orange : Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      CircleAvatar(
+                        radius: size.width * 0.04, // Responsive radius
+                        backgroundColor: isDone
+                            ? const Color(0xFF285D66)
+                            : (isCurrent ? Colors.amber : Colors.grey.shade100),
+                        child: isDone
+                            ? const Icon(
+                                Icons.check,
+                                size: 16,
+                                color: Colors.white,
+                              )
+                            : Text(
+                                "${index + 1}",
+                                style: TextStyle(
+                                  color: isCurrent
+                                      ? Colors.white
+                                      : Colors.black,
+                                  fontSize: 12,
+                                ),
+                              ),
+                      ),
+                    ],
+                  );
+                }),
               );
-            }),
+            },
           ),
           const SizedBox(height: 20),
           SizedBox(
             width: double.infinity,
             height: 50,
             child: ElevatedButton(
-              onPressed: claimed
+              onPressed: controller.isClaimedToday.value
                   ? null
-                  : () => _claimDailyReward(streak, balance),
+                  : () {}, // Logic here
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF285D66),
-                disabledBackgroundColor: Colors.grey.shade200,
+                disabledBackgroundColor: Colors.grey.shade300,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(15),
                 ),
               ),
               child: Text(
-                claimed
-                    ? "Sucessfully Claimed!"
-                    : "Collect Day ${streak + 1} Reward",
-                style: const TextStyle(fontWeight: FontWeight.bold, color:  Color(0xFF285D66),
+                controller.isClaimedToday.value
+                    ? "Claimed Today"
+                    : "Claim Day ${controller.streak.value + 1} Reward",
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
                 ),
               ),
             ),
@@ -393,25 +260,21 @@ class _OffersCouponsScreenState extends State<OffersCouponsScreen> {
     IconData icon,
     Color color,
   ) {
-    bool isUnlocked = balance >= cost;
+    bool isLocked = balance < cost;
     return Container(
-      margin: const EdgeInsets.only(bottom: 15),
-      padding: const EdgeInsets.all(15),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isUnlocked ? Colors.white : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(20),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isUnlocked ? color.withValues(alpha: 0.3) : Colors.transparent,
+          color: isLocked ? Colors.transparent : color.withValues(alpha: 0.3),
         ),
       ),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
+          CircleAvatar(
+            backgroundColor: color.withValues(alpha: 0.1),
             child: Icon(icon, color: color),
           ),
           const SizedBox(width: 15),
@@ -421,22 +284,18 @@ class _OffersCouponsScreenState extends State<OffersCouponsScreen> {
               children: [
                 Text(
                   title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: isUnlocked ? Colors.black : Colors.grey,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 Text(
-                  "Redeem 100 Pts at Checkout",
+                  "Cost: $cost Points",
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ],
             ),
           ),
           Icon(
-            isUnlocked ? Icons.check_circle : Icons.lock_outline,
-            color: isUnlocked ? Colors.green : Colors.grey,
-            size: 20,
+            isLocked ? Icons.lock_outline : Icons.check_circle,
+            color: isLocked ? Colors.grey : Colors.green,
           ),
         ],
       ),

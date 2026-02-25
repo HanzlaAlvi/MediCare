@@ -1,29 +1,55 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart'; // url_launch.dart ki jagah package use karein
+import 'package:url_launcher/url_launcher.dart'; // Ensure this is in pubspec.yaml
 import 'faqs_screen.dart';
 import 'livechat_screen.dart';
-import 'order_history.dart'; // Import Order History
-//import 'prescription_detail_screen.dart'; // Order Screen ka import (Jahan bhi track order ho)
+import 'order_history.dart';
 import 'order_screen.dart';
-// Note: Agar aapki Order Screen ka naam kuch aur hai to yahan import change karein
-// import 'order_screen.dart';
 
 class HelpSupportScreen extends StatelessWidget {
   const HelpSupportScreen({super.key});
 
-  // Dialer Helper
-  void openDialer(String phoneNumber) async {
+  // --- 1. DIALER HELPER ---
+  Future<void> openDialer(String phoneNumber) async {
     final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber);
     if (await canLaunchUrl(launchUri)) {
       await launchUrl(launchUri);
+    } else {
+      debugPrint("Could not launch dialer");
     }
+  }
+
+  // --- 2. EMAIL HELPER ---
+  Future<void> openEmail(String emailAddress) async {
+    // mailto: scheme opens the default email app (like Gmail)
+    final Uri emailLaunchUri = Uri(
+      scheme: 'mailto',
+      path: emailAddress,
+      query: _encodeQueryParameters(<String, String>{
+        'subject': 'Help and Support Query', // Optional default subject
+      }),
+    );
+
+    if (await canLaunchUrl(emailLaunchUri)) {
+      await launchUrl(emailLaunchUri);
+    } else {
+      debugPrint("Could not launch email app");
+    }
+  }
+
+  // Helper to encode email subject/body
+  String? _encodeQueryParameters(Map<String, String> params) {
+    return params.entries
+        .map(
+          (MapEntry<String, String> e) =>
+              '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}',
+        )
+        .join('&');
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-
       appBar: AppBar(
         centerTitle: true,
         backgroundColor: const Color(0xFF285D66),
@@ -36,9 +62,6 @@ class HelpSupportScreen extends StatelessWidget {
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => Navigator.pop(context),
         ),
-        actions: [
-          IconButton(icon: const Icon(Icons.edit_square), onPressed: () {}),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -66,15 +89,19 @@ class HelpSupportScreen extends StatelessWidget {
                 );
               },
             ),
+
+            // EMAIL CLICK ACTION
             _buildContactOption(
               context,
               icon: Icons.email,
               title: "Email",
               subtitle: "support@pharmdelivery.com",
               onTap: () {
-                // Email launch logic here
+                openEmail('support@pharmdelivery.com'); // Calls Email Helper
               },
             ),
+
+            // PHONE CLICK ACTION
             _buildContactOption(
               context,
               icon: Icons.phone,
@@ -82,7 +109,9 @@ class HelpSupportScreen extends StatelessWidget {
               iconColor: Colors.red,
               subtitle: "+92 321 1234567",
               onTap: () {
-                openDialer('+92 321 1234567');
+                openDialer(
+                  '+923211234567',
+                ); // Calls Dialer Helper (removed spaces)
               },
             ),
 
@@ -90,11 +119,10 @@ class HelpSupportScreen extends StatelessWidget {
             const TextWidgetCustom(text: "Quick Help"),
             const SizedBox(height: 15),
 
-            // --- QUICK HELP (UPDATED) ---
+            // --- QUICK HELP ---
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // 1. Track Order
                 _buildQuickHelpBox(
                   context: context,
                   icon: Icons.local_shipping_outlined,
@@ -110,8 +138,6 @@ class HelpSupportScreen extends StatelessWidget {
                     );
                   },
                 ),
-
-                // 2. Order History
                 _buildQuickHelpBox(
                   context: context,
                   icon: Icons.history,
@@ -239,19 +265,18 @@ class HelpSupportScreen extends StatelessWidget {
     );
   }
 
-  // --- UPDATED QUICK HELP BOX (With onTap) ---
   Widget _buildQuickHelpBox({
     required BuildContext context,
     required IconData icon,
     required Color bgColor,
     required Color iconColor,
     required String title,
-    required VoidCallback onTap, // Clickable banane ke liye
+    required VoidCallback onTap,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: MediaQuery.of(context).size.width * 0.43, // Responsive Width
+        width: MediaQuery.of(context).size.width * 0.43,
         height: 100,
         decoration: BoxDecoration(
           color: Colors.white,

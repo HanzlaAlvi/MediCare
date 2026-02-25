@@ -1,10 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:get/get.dart'; // Import GetX
+import 'package:get/get.dart';
 
-// Screens
+// Screens & Controllers
+import 'profile_controller.dart';
+import 'auth_controller.dart';
 import 'package:medi_care/help_support_screen.dart';
 import 'package:medi_care/offers_coupons_screen.dart';
 import 'change_password_screen.dart';
@@ -12,39 +13,13 @@ import 'saved_info_screen.dart';
 import 'my_prescriptions_screen.dart';
 import 'edit_profile_screen.dart';
 
-// Controllers
-import 'auth_controller.dart';
-
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
-  // --- GETX DIALOG FOR LOGOUT ---
-  void _handleLogout() {
-    Get.defaultDialog(
-      title: "Confirm Logout",
-      titleStyle: const TextStyle(fontWeight: FontWeight.bold),
-      middleText: "Are you sure you want to log out?",
-      backgroundColor: Colors.white,
-      radius: 20,
-      contentPadding: const EdgeInsets.all(20),
-
-      // Cancel Button
-      textCancel: "Cancel",
-      cancelTextColor: Colors.grey,
-      onCancel: () {}, // Dialog band ho jayega
-      // Confirm Button
-      textConfirm: "Logout",
-      confirmTextColor: Colors.white,
-      buttonColor: const Color(0xFF285D66),
-      onConfirm: () {
-        // Dialog band karne ki zaroorat nahi, AuthController seedha Login screen pe le jayega
-        AuthController.instance.logout();
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    // Controller ko inject karna
+    final controller = Get.put(ProfileController());
     User? currentUser = FirebaseAuth.instance.currentUser;
 
     if (currentUser == null) {
@@ -57,156 +32,120 @@ class ProfileScreen extends StatelessWidget {
         backgroundColor: const Color(0xFF285D66),
         foregroundColor: Colors.white,
         centerTitle: true,
+        elevation: 0,
         title: const Text(
           "My Profile",
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        // leading: IconButton(
-        //   icon: const Icon(Icons.arrow_back_ios),
-        //   onPressed: () => Get.back(), // GetX Navigation
-        // ),
       ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(currentUser.uid)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          String name = currentUser.displayName ?? "User";
-          String email = currentUser.email ?? "No Email";
-          ImageProvider imageProvider = const NetworkImage(
-            'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+      // Obx sirf un widgets ko rebuild karta hai jinme controller ki value change ho
+      body: Obx(() {
+        if (controller.isLoading.value) {
+          return const Center(
+            child: CircularProgressIndicator(color: Color(0xFF285D66)),
           );
-          String picData = "";
+        }
 
-          if (snapshot.hasData && snapshot.data!.exists) {
-            var data = snapshot.data!.data() as Map<String, dynamic>;
-            name = data['username'] ?? name;
-            email = data['email'] ?? email;
-            if (data['profilePic'] != null && data['profilePic'] != "") {
-              try {
-                picData = data['profilePic'];
-                imageProvider = MemoryImage(base64Decode(picData));
-              } catch (e) {
-                debugPrint("Image Error: $e");
-              }
-            }
-          }
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                const SizedBox(height: 10),
-                Center(
-                  child: Stack(
-                    alignment: Alignment.bottomRight,
-                    children: [
-                      CircleAvatar(
-                        radius: 60,
-                        backgroundImage: imageProvider,
-                        backgroundColor: Colors.grey.shade200,
-                      ),
-                      GestureDetector(
-                        onTap: () {
-                          // GetX Navigation
-                          Get.to(
-                            () => EditProfileScreen(
-                              currentName: name,
-                              currentEmail: email,
-                              currentPic: picData,
-                            ),
-                          );
-                        },
-                        child: const CircleAvatar(
-                          backgroundColor: Color(0xFF285D66),
-                          radius: 18,
-                          child: Icon(
-                            Icons.edit,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 15),
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  email,
-                  style: const TextStyle(fontSize: 16, color: Colors.black54),
-                ),
-                const SizedBox(height: 30),
+              // Profile Picture Section
+              _buildAvatarSection(controller),
 
-                // Options List (Updated with GetX calls)
-                _buildProfileOption(
-                  Icons.description_outlined,
-                  "My Prescriptions",
-                  () => const MyPrescriptionsScreen(),
-                ),
-                _buildProfileOption(
-                  Icons.help_outline,
-                  "Help and Support",
-                  () => const HelpSupportScreen(),
-                ),
-                _buildProfileOption(
-                  Icons.bookmark_border,
-                  "Saved Info",
-                  () => const SavedInfoScreen(),
-                ),
-                _buildProfileOption(
-                  Icons.lock_outline,
-                  "Change Password",
-                  () => const ChangePasswordScreen(),
-                ),
-                _buildProfileOption(
-                  Icons.local_offer_outlined,
-                  "Offers & Coupons",
-                  () => const OffersCouponsScreen(),
-                ),
+              const SizedBox(height: 15),
 
-                const SizedBox(height: 30),
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton(
-                    onPressed: _handleLogout, // Calls GetX Dialog
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF285D66),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(25),
-                      ),
-                    ),
-                    child: const Text(
-                      "Logout",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
+              // Name & Email
+              Text(
+                controller.name.value,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
                 ),
-              ],
+              ),
+              Text(
+                controller.email.value,
+                style: const TextStyle(fontSize: 16, color: Colors.black54),
+              ),
+
+              const SizedBox(height: 30),
+
+              // Options List
+              _buildProfileOption(
+                Icons.description_outlined,
+                "My Prescriptions",
+                () => const MyPrescriptionsScreen(),
+              ),
+              _buildProfileOption(
+                Icons.help_outline,
+                "Help and Support",
+                () => const HelpSupportScreen(),
+              ),
+              _buildProfileOption(
+                Icons.bookmark_border,
+                "Saved Info",
+                () => const SavedInfoScreen(),
+              ),
+              _buildProfileOption(
+                Icons.lock_outline,
+                "Change Password",
+                () => const ChangePasswordScreen(),
+              ),
+              _buildProfileOption(
+                Icons.local_offer_outlined,
+                "Offers & Coupons",
+                () => const OffersCouponsScreen(),
+              ),
+
+              const SizedBox(height: 30),
+
+              // Logout Button
+              _buildLogoutButton(),
+            ],
+          ),
+        );
+      }),
+    );
+  }
+
+  // --- Sub Widgets ---
+
+  Widget _buildAvatarSection(ProfileController controller) {
+    return Center(
+      child: Stack(
+        alignment: Alignment.bottomRight,
+        children: [
+          CircleAvatar(
+            radius: 60,
+            backgroundColor: Colors.grey.shade200,
+            backgroundImage: controller.profilePicBase64.value.isNotEmpty
+                ? MemoryImage(base64Decode(controller.profilePicBase64.value))
+                : const NetworkImage(
+                        'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+                      )
+                      as ImageProvider,
+          ),
+          GestureDetector(
+            onTap: () => Get.to(
+              () => EditProfileScreen(
+                currentName: controller.name.value,
+                currentEmail: controller.email.value,
+                currentPic: controller.profilePicBase64.value,
+              ),
             ),
-          );
-        },
+            child: const CircleAvatar(
+              backgroundColor: Color(0xFF285D66),
+              radius: 18,
+              child: Icon(Icons.edit, color: Colors.white, size: 18),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  // Updated Widget (Removed Context)
   Widget _buildProfileOption(
     IconData icon,
     String title,
@@ -232,7 +171,97 @@ class ProfileScreen extends StatelessWidget {
           size: 16,
           color: Colors.grey,
         ),
-        onTap: () => Get.to(() => screen()), // GetX Navigation
+        onTap: () => Get.to(screen),
+      ),
+    );
+  }
+
+  Widget _buildLogoutButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 55,
+      child: ElevatedButton(
+        onPressed: _showLogoutDialog,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF285D66),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(25),
+          ),
+        ),
+        child: const Text(
+          "Logout",
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showLogoutDialog() {
+    Get.dialog(
+      Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+        child: Container(
+          padding: const EdgeInsets.all(25),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.logout_rounded,
+                color: Color(0xFF285D66),
+                size: 40,
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                "Confirm logout?",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF285D66),
+                ),
+              ),
+              const SizedBox(height: 25),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Get.back(),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFF285D66)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                      ),
+                      child: const Text(
+                        "Cancel",
+                        style: TextStyle(color: Color(0xFF285D66)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 15),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => AuthController.instance.logout(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF285D66),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                      ),
+                      child: const Text(
+                        "Logout",
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

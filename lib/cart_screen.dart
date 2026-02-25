@@ -11,29 +11,25 @@ class CartScreen extends StatefulWidget {
 }
 
 class _CartScreenState extends State<CartScreen> {
-  bool isEditMode = false;
   final String userId = FirebaseAuth.instance.currentUser!.uid;
+  final Color themeColor = const Color(0xFF285D66);
 
-  // --- FIXED PRICE PARSER ---
+  // Selection track karne ke liye Set
+  Set<String> selectedDocIds = {};
+  bool isFirstLoad = true;
+
   double parsePrice(dynamic price) {
     if (price == null) return 0.0;
     if (price is num) return price.toDouble();
-
     String p = price.toString().toLowerCase();
-
-    // 1. Remove specific strings
     p = p.replaceAll('rs.', '').replaceAll('rs', '').replaceAll('pkr', '');
-
-    // 2. Clean spaces/extra characters, keep only numbers and dot
     p = p.replaceAll(RegExp(r'[^0-9.]'), '');
-
     return double.tryParse(p) ?? 0.0;
   }
 
   int parseQty(dynamic qty) {
     if (qty == null) return 1;
     if (qty is int) return qty;
-    if (qty is double) return qty.toInt();
     return int.tryParse(qty.toString()) ?? 1;
   }
 
@@ -56,37 +52,28 @@ class _CartScreenState extends State<CartScreen> {
         .collection('cart')
         .doc(docId)
         .delete();
+    setState(() {
+      selectedDocIds.remove(docId);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF285D66),
+        backgroundColor: themeColor,
         foregroundColor: Colors.white,
+        elevation: 0,
         centerTitle: true,
         title: const Text(
-          "My Cart",
-          style: TextStyle(fontWeight: FontWeight.bold),
+          "Shopping Cart",
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios),
+          icon: const Icon(Icons.arrow_back_ios_new, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => setState(() => isEditMode = !isEditMode),
-            child: Text(
-              isEditMode ? "Done" : "Edit",
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
@@ -96,154 +83,54 @@ class _CartScreenState extends State<CartScreen> {
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: Color(0xFF285D66)),
-            );
+            return Center(child: CircularProgressIndicator(color: themeColor));
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text("Cart is Empty"));
+            return _buildEmptyState();
           }
 
           final cartDocs = snapshot.data!.docs;
 
+          // Logic: First load par sab items ko select karlo
+          if (isFirstLoad) {
+            for (var doc in cartDocs) {
+              selectedDocIds.add(doc.id);
+            }
+            isFirstLoad = false;
+          }
+
           double subtotal = 0.0;
+          List<Map<String, dynamic>> selectedItems = [];
 
           for (var doc in cartDocs) {
             var data = doc.data() as Map<String, dynamic>;
-            double price = parsePrice(data['price']);
-            int qty = parseQty(data['qty']);
-            subtotal += (price * qty);
+            if (selectedDocIds.contains(doc.id)) {
+              subtotal += (parsePrice(data['price']) * parseQty(data['qty']));
+              selectedItems.add(data);
+            }
           }
 
-          double salesTax = 200.0;
+          double salesTax = subtotal > 0 ? 200.0 : 0.0;
           double orderTotal = subtotal + salesTax;
 
           return Column(
             children: [
               Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.all(20),
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(15),
                   itemCount: cartDocs.length,
-                  separatorBuilder: (context, index) =>
-                      const Divider(height: 30, color: Colors.transparent),
                   itemBuilder: (context, index) {
                     var data = cartDocs[index].data() as Map<String, dynamic>;
                     String docId = cartDocs[index].id;
-
-                    // --- NEW: SWIPE TO DELETE ---
-                    return Dismissible(
-                      key: Key(docId),
-                      direction:
-                          DismissDirection.endToStart, // Swipe Right to Left
-                      onDismissed: (direction) {
-                        _removeItem(docId);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text("${data['name']} removed from cart"),
-                            backgroundColor: Colors.redAccent,
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      },
-                      background: Container(
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 20),
-                        decoration: BoxDecoration(
-                          color: Colors.redAccent,
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        child: const Icon(
-                          Icons.delete_sweep,
-                          color: Colors.white,
-                          size: 30,
-                        ),
-                      ),
-                      child: _buildCartItem(data, docId),
-                    );
+                    return _buildCartCard(data, docId);
                   },
                 ),
               ),
-
-              // Bottom Summary Section
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.shade200,
-                      blurRadius: 10,
-                      offset: const Offset(0, -5),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    _buildSummaryRow(
-                      "Item(s) total:",
-                      "Rs.${subtotal.toStringAsFixed(0)}",
-                    ),
-                    _buildSummaryRow(
-                      "Subtotal:",
-                      "Rs.${subtotal.toStringAsFixed(0)}",
-                    ),
-                    const SizedBox(height: 5),
-                    const Divider(),
-                    const SizedBox(height: 5),
-                    _buildSummaryRow(
-                      "Shipping:",
-                      "FREE",
-                      valueColor: Colors.green,
-                    ),
-                    _buildSummaryRow(
-                      "Sales tax:",
-                      "Rs.${salesTax.toStringAsFixed(0)}",
-                    ),
-                    const SizedBox(height: 10),
-                    const Divider(),
-                    const SizedBox(height: 10),
-                    _buildSummaryRow(
-                      "Order total:",
-                      "Rs.${orderTotal.toStringAsFixed(0)}",
-                      isTotal: true,
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 55,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          List<Map<String, dynamic>> items = cartDocs
-                              .map((e) => e.data() as Map<String, dynamic>)
-                              .toList();
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => CheckOutScreen(
-                                cartItems: items,
-                                totalAmount: orderTotal,
-                              ),
-                            ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF285D66),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(25),
-                          ),
-                        ),
-                        child: const Text(
-                          "Checkout",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              _buildBottomSection(
+                subtotal,
+                salesTax,
+                orderTotal,
+                selectedItems,
               ),
             ],
           );
@@ -252,147 +139,283 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  Widget _buildCartItem(Map<String, dynamic> item, String docId) {
-    bool isNetwork = item['image'].toString().startsWith('http');
+  Widget _buildCartCard(Map<String, dynamic> item, String docId) {
     int qty = parseQty(item['qty']);
     double unitPrice = parsePrice(item['price']);
+    String imagePath = item['image'].toString();
+    bool isSelected = selectedDocIds.contains(docId);
 
-    return Row(
-      children: [
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(10),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 15),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
-          child: isNetwork
-              ? ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.network(item['image'], fit: BoxFit.cover),
-                )
-              : Image.asset(
-                  item['image'],
-                  fit: BoxFit.cover,
-                  errorBuilder: (c, o, s) => const Icon(Icons.error),
-                ),
-        ),
-        const SizedBox(width: 15),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                item['name'] ?? 'Product',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text(
-                item['brand'] ?? '',
-                style: const TextStyle(color: Colors.grey, fontSize: 13),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "Rs. ${unitPrice.toStringAsFixed(0)}",
-                    style: const TextStyle(
-                      color: Color(0xFF285D66),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+        ],
+      ),
+      child: Row(
+        children: [
+          // 1. Selection Checkbox
+          Checkbox(
+            activeColor: themeColor,
+            value: isSelected,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(4),
+            ),
+            onChanged: (val) {
+              setState(() {
+                if (val == true) {
+                  selectedDocIds.add(docId);
+                } else {
+                  selectedDocIds.remove(docId);
+                }
+              });
+            },
+          ),
+
+          // 2. Image
+          Container(
+            width: 70,
+            height: 70,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade100),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: imagePath.startsWith('http')
+                  ? Image.network(imagePath, fit: BoxFit.contain)
+                  : Image.asset(
+                      imagePath,
+                      fit: BoxFit.contain,
+                      errorBuilder: (c, o, s) => Icon(
+                        Icons.medication,
+                        color: themeColor.withValues(alpha: 0.5),
+                      ),
                     ),
-                  ),
-                  if (!isEditMode)
-                    Row(
-                      children: [
-                        _buildQtyBtn(
-                          Icons.remove,
-                          () => _updateQuantity(docId, qty, -1),
+            ),
+          ),
+          const SizedBox(width: 12),
+
+          // 3. Details
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item['name'] ?? 'Product',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
                         ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          child: Text(
-                            "$qty",
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        _buildQtyBtn(
-                          Icons.add,
-                          () => _updateQuantity(docId, qty, 1),
-                          isAdd: true,
-                        ),
-                      ],
-                    )
-                  else
-                    InkWell(
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    // 4. Delete Icon (Top Right of Info Section)
+                    GestureDetector(
                       onTap: () => _removeItem(docId),
                       child: const Icon(
                         Icons.delete_outline,
                         color: Colors.redAccent,
-                        size: 24,
+                        size: 20,
                       ),
                     ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+                Text(
+                  item['brand'] ?? '',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+                // 5. Horizontal Row for Price and Counter
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "Rs. ${unitPrice.toStringAsFixed(0)}",
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                        color: themeColor,
+                      ),
+                    ),
+                    // Horizontal Counter
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        children: [
+                          _qtyBtn(
+                            Icons.remove,
+                            () => _updateQuantity(docId, qty, -1),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Text(
+                              "$qty",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          _qtyBtn(
+                            Icons.add,
+                            () => _updateQuantity(docId, qty, 1),
+                            isAdd: true,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildQtyBtn(IconData icon, VoidCallback onTap, {bool isAdd = false}) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: isAdd ? const Color(0xFF285D66) : Colors.white,
-          border: Border.all(color: const Color(0xFF285D66)),
-        ),
-        child: Icon(
-          icon,
-          size: 18,
-          color: isAdd ? Colors.white : const Color(0xFF285D66),
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildSummaryRow(
-    String label,
-    String value, {
-    bool isTotal = false,
-    Color? valueColor,
-  }) {
+  Widget _qtyBtn(IconData icon, VoidCallback onTap, {bool isAdd = false}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: isAdd ? themeColor : Colors.transparent,
+        ),
+        child: Icon(icon, size: 16, color: isAdd ? Colors.white : themeColor),
+      ),
+    );
+  }
+
+  Widget _buildBottomSection(
+    double sub,
+    double tax,
+    double total,
+    List<Map<String, dynamic>> selectedItems,
+  ) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 15)],
+      ),
+      child: Column(
+        children: [
+          _summaryRow(
+            "Selected Items Subtotal",
+            "Rs. ${sub.toStringAsFixed(0)}",
+          ),
+          _summaryRow("Sales Tax", "Rs. ${tax.toStringAsFixed(0)}"),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Divider(),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "Total Amount",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              Text(
+                "Rs. ${total.toStringAsFixed(0)}",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: themeColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 55,
+            child: ElevatedButton(
+              onPressed: selectedItems.isEmpty
+                  ? null
+                  : () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (c) => CheckOutScreen(
+                            cartItems: selectedItems,
+                            totalAmount: total,
+                          ),
+                        ),
+                      );
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: themeColor,
+                disabledBackgroundColor: Colors.grey.shade300,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                elevation: 0,
+              ),
+              child: Text(
+                selectedItems.isEmpty
+                    ? "Select items"
+                    : "Checkout (${selectedItems.length})",
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryRow(String title, String val) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: isTotal ? 18 : 15,
-              fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
-            ),
+          Text(title, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+          Text(val, style: const TextStyle(fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.shopping_cart_outlined,
+            size: 80,
+            color: themeColor.withValues(alpha: 0.2),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: isTotal ? 18 : 15,
-              fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
-              color: valueColor ?? Colors.black,
-            ),
+          const SizedBox(height: 15),
+          const Text(
+            "Cart is empty",
+            style: TextStyle(fontSize: 18, color: Colors.grey),
           ),
         ],
       ),

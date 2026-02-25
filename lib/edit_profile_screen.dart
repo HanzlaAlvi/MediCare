@@ -48,16 +48,51 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _pickImage() async {
     _unfocus();
     final ImagePicker picker = ImagePicker();
+
+    // Image quality 50% rakhi hai taake size control mein rahe
     final XFile? image = await picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 50,
     );
+
     if (image != null) {
       final bytes = await image.readAsBytes();
+
+      // --- SIZE VALIDATION LOGIC ---
+      // 1024 * 1024 = 1MB. Hum 512KB (0.5MB) ki limit laga rahe hain
+      double sizeInMb = bytes.length / (1024 * 1024);
+      double limit = 0.5;
+
+      if (sizeInMb > limit) {
+        if (!mounted) return;
+        _showErrorDialog(
+          "Image Too Large",
+          "Selected image is ${sizeInMb.toStringAsFixed(2)}MB. Please select an image smaller than 500KB for better performance.",
+        );
+        return; // Function yahan ruk jayega, image save nahi hogi
+      }
+
       setState(() => _imageBytes = bytes);
     }
   }
 
+  // --- ERROR DIALOG HELPER ---
+  void _showErrorDialog(String title, String msg) {
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        content: Text(msg),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text("OK", style: TextStyle(color: Color(0xFF285D66))),
+          ),
+        ],
+      ),
+    );
+  }
   // --- RE-AUTHENTICATION DIALOG ---
   Future<String?> _showPasswordDialog() async {
     String? password;

@@ -71,7 +71,7 @@ class OrdersScreen extends StatelessWidget {
     String status = order['status'] ?? 'Processing';
     String orderId = order['orderId'].toString();
     String date = order['date'] ?? 'No Date';
-    String total = order['total']?.toString() ?? '0';
+String total = (order['totalAmount'] ?? order['total'] ?? order['amount'] ?? '0').toString();
 
     Color statusBg = status == 'Delivered'
         ? const Color(0xFFFF6B6B)

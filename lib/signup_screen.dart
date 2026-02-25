@@ -70,6 +70,7 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   // --- REGISTRATION LOGIC ---
+  // --- REGISTRATION LOGIC ---
   Future<void> _handleSignup() async {
     if (!_validateInput()) return;
 
@@ -83,25 +84,38 @@ class _SignupScreenState extends State<SignupScreen> {
           );
 
       if (userCredential.user != null) {
-        // Verification email bhejien
+        // 1. Verification email bhejien
         await userCredential.user!.sendEmailVerification();
 
-        // Firestore mein user record create karein
+        // 🎯 ADMIN ROLE LOGIC:
+        // Agar username ke sath humne koi secret code likha ho (e.g. "admin_786")
+        // Ya aap yahan check kar sakte hain specific email ko
+        String role = "user"; // Default role
+
+        if (_usernameController.text.trim().contains("ADMIN123")) {
+          role = "admin";
+        }
+
+        // 2. Firestore mein user record create karein with ROLE
         await FirebaseFirestore.instance
             .collection('users')
             .doc(userCredential.user!.uid)
             .set({
               'uid': userCredential.user!.uid,
-              'username': _usernameController.text.trim(),
+              'username': _usernameController.text.trim().replaceAll(
+                "ADMIN123",
+                "",
+              ), // Code hata kar real name save karein
               'email': _emailController.text.trim(),
-              'profilePic': '', // Profile pic empty rakhi hai
-              'createdAt': DateTime.now(),
+              'role': role, // 👈 Yeh field Admin check ke liye zaroori hai
+              'profilePic': '',
+              'createdAt': FieldValue.serverTimestamp(),
             });
 
         if (!mounted) return;
         setState(() => _isLoading = false);
 
-        // Success Dialog dikhayen
+        // Success Dialog
         _showSuccessDialog(_emailController.text.trim());
       }
     } on FirebaseAuthException catch (e) {
@@ -109,7 +123,6 @@ class _SignupScreenState extends State<SignupScreen> {
       _showSnackBar(e.message ?? "An error occurred during signup.");
     }
   }
-
   void _showSuccessDialog(String email) {
     showDialog(
       context: context,

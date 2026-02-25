@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'order_screen.dart'; // Ensure this file path is correct
+import 'order_screen.dart'; 
 
 class NotificationDetailScreen extends StatelessWidget {
   final Map<String, dynamic> notification;
