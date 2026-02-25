@@ -232,6 +232,7 @@ class MedicineCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 🖼️ IMAGE SECTION
             Expanded(
               flex: 3,
               child: Container(
@@ -250,36 +251,39 @@ class MedicineCard extends StatelessWidget {
                 ),
               ),
             ),
+
+            // 📝 DETAILS SECTION
             Expanded(
               flex: 2,
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          brand.toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.grey.shade500,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                    Text(
+                      brand.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade500,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
+                    const SizedBox(height: 2), // Halka sa gap
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+
+                    // 🛡️ SPACER: Yeh price aur Plus button ko HAMESHA bottom pe push karega
+                    const Spacer(),
+
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -318,7 +322,6 @@ class MedicineCard extends StatelessWidget {
     );
   }
 }
-
 // --- PROMO BANNER ---
 class PromoBanner extends StatelessWidget {
   const PromoBanner({super.key});

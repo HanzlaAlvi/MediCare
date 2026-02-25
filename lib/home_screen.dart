@@ -26,6 +26,10 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
       extendBody: true,
+
+      // 🛡️ YEH LINE ADD KI HAI - Is se Plus button apni jagah par fix rahega!
+      resizeToAvoidBottomInset: false,
+
       body: Obx(() => pages[controller.selectedIndex.value]),
 
       // --- ➕ CENTRAL PLUS BUTTON ---

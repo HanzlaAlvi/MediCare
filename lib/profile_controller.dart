@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
 
 class ProfileController extends GetxController {
-  // Observables - Inke change hone par UI khud update hogi
   var name = "User".obs;
   var email = "No Email".obs;
   var profilePicBase64 = "".obs;
@@ -18,7 +17,6 @@ class ProfileController extends GetxController {
   void fetchUserData() {
     User? currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser != null) {
-      // .listen use karne se real-time updates milte rahenge bina screen reload kiye
       FirebaseFirestore.instance
           .collection('users')
           .doc(currentUser.uid)
@@ -27,17 +25,23 @@ class ProfileController extends GetxController {
             (snapshot) {
               if (snapshot.exists) {
                 var data = snapshot.data() as Map<String, dynamic>;
-                name.value = data['username'] ?? "User";
-                email.value = data['email'] ?? "No Email";
+                name.value = data['username'] ?? data['fullName'] ?? "User";
+                email.value = data['email'] ?? currentUser.email ?? "No Email";
                 profilePicBase64.value = data['profilePic'] ?? "";
               }
               isLoading.value = false;
             },
             onError: (e) {
               isLoading.value = false;
-              Get.snackbar("Error", "Failed to load profile");
+              // 🛡️ FIX: Agar user logout ho chuka hai, toh error mat dikhao
+              if (FirebaseAuth.instance.currentUser != null) {
+                print("Firestore Error: $e");
+                Get.snackbar("Error", "Failed to load profile.");
+              }
             },
           );
+    } else {
+      isLoading.value = false;
     }
   }
 }

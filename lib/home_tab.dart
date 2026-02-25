@@ -6,22 +6,39 @@ import 'home_widgets.dart';
 import 'product_details_screen.dart';
 import 'viewall_screen.dart';
 
-class HomeTab extends StatelessWidget {
+// 1. Ise StatefulWidget bana diya
+class HomeTab extends StatefulWidget {
   const HomeTab({super.key});
+
+  @override
+  State<HomeTab> createState() => _HomeTabState();
+}
+
+class _HomeTabState extends State<HomeTab> {
+  // 🎯 2. Stream ko yahan save kar liya taake Keyboard khulne pe reload na ho
+  late final Stream<QuerySnapshot> _medicinesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _medicinesStream = FirebaseFirestore.instance
+        .collection('medicines')
+        .snapshots();
+  }
 
   @override
   Widget build(BuildContext context) {
     final controller = Get.find<HomeController>();
 
     return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(),
+      onTap: () => FocusScope.of(
+        context,
+      ).unfocus(), // Bahar click karne se keyboard band hoga
       child: Scaffold(
         backgroundColor: const Color(0xFFFAFAFA),
         appBar: const HomeAppBar(),
         body: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('medicines')
-              .snapshots(),
+          stream: _medicinesStream, // 👈 3. Ab yahan saved stream pass kiya
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(
@@ -38,8 +55,9 @@ class HomeTab extends StatelessWidget {
                 String name = data['name'].toString().toLowerCase();
                 String category = data['category'] ?? "All";
 
+                // 🔍 Search ko behtar karne k liye toLowerCase() add kiya
                 bool matchesSearch = name.contains(
-                  controller.searchQuery.value,
+                  controller.searchQuery.value.toLowerCase(),
                 );
                 bool matchesCategory =
                     (controller.selectedCategory.value == "All") ||

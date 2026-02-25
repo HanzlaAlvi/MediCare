@@ -1,199 +1,333 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'admin_controller.dart';
-import 'add_edit_medicine_screen.dart';
-import '../login_screen.dart';
-import 'admin_orders_screen.dart';
-import 'payment_verification_screen.dart';
-// Note: OrdersScreen aur baaki files ke imports yahan add karein
+import 'admin_drawer.dart';
+import 'add_edit_medicine_screen.dart'; // Quick action k liye import
+import 'payment_verification_screen.dart'; // Quick action k liye import
 
 class AdminDashboard extends StatelessWidget {
   const AdminDashboard({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.put(AdminController());
+    const Color themeColor = Color(0xFF285D66);
+
+    // Aaj ki date nikalne k liye
+    DateTime now = DateTime.now();
+    List<String> months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    String todayDate = "${now.day} ${months[now.month - 1]}, ${now.year}";
 
     return Scaffold(
-      backgroundColor: context.theme.scaffoldBackgroundColor,
-      // --- 📱 SIDEBAR (DRAWER) ---
-      drawer: _buildSidebar(context),
-
+      backgroundColor: const Color(0xFFF4F7F6), // Soft background
+      drawer: const AdminDrawer(),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF285D66),
+        backgroundColor: themeColor,
         foregroundColor: Colors.white,
         centerTitle: true,
-        title: const Text("MediCare Admin"),
-        actions: [
-          IconButton(
-            onPressed: () => Get.to(() => const AddEditMedicineScreen()),
-            icon: const Icon(Icons.add_box_rounded),
-          ),
-        ],
+        title: const Text(
+          "Admin Dashboard",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        elevation: 0,
       ),
-      body: Obx(() {
-        if (controller.isLoading.value) {
-          return const Center(
-            child: CircularProgressIndicator(color: Color(0xFF285D66)),
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: controller.medicines.length,
-          itemBuilder: (context, index) {
-            var doc = controller.medicines[index];
-            var data = doc.data() as Map<String, dynamic>;
-            List images = data['images'] ?? [];
-            String imagePath = images.isNotEmpty ? images[0] : "";
-
-            return Card(
-              color: context.theme.cardColor,
-              margin: const EdgeInsets.only(bottom: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: ListTile(
-                leading: _buildMedicineImage(imagePath),
-                title: Text(
-                  data['name'] ?? 'N/A',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // --- 1. WELCOME BANNER ---
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(25),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF285D66), Color(0xFF458B96)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                subtitle: Text("Stock: ${data['stock']}"),
-                trailing: IconButton(
-                  icon: const Icon(
-                    Icons.edit_outlined,
-                    color: Color(0xFF285D66),
+                boxShadow: [
+                  BoxShadow(
+                    color: themeColor.withValues(alpha: 0.3),
+                    blurRadius: 15,
+                    offset: const Offset(0, 8),
                   ),
-                  onPressed: () => Get.to(
-                    () => AddEditMedicineScreen(
-                      medicineData: data,
-                      docId: doc.id,
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    todayDate,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
-                ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    "Welcome Back, Admin! 👋",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    "Here is what's happening with your store today.",
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
               ),
-            );
-          },
-        );
-      }),
+            ),
+            const SizedBox(height: 30),
+
+            // --- 2. QUICK ACTIONS ---
+            const Text(
+              "Quick Actions",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 15),
+            Row(
+              children: [
+                Expanded(
+                  child: _quickActionButton(
+                    title: "Add Medicine",
+                    icon: Icons.add_box_rounded,
+                    color: Colors.blueAccent,
+                    onTap: () => Get.to(() => const AddEditMedicineScreen()),
+                  ),
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: _quickActionButton(
+                    title: "Verify Payments",
+                    icon: Icons.verified_user_rounded,
+                    color: Colors.purpleAccent,
+                    onTap: () =>
+                        Get.to(() => const PaymentVerificationScreen()),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 30),
+
+            // --- 3. METRICS GRID ---
+            const Text(
+              "Store Overview",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 15),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisSpacing: 15,
+              mainAxisSpacing: 15,
+              childAspectRatio: 1.0, // Cards ko thora square shape diya
+              children: [
+                _buildStatCard(
+                  'users',
+                  'Total Users',
+                  Icons.people_alt_rounded,
+                  const Color(0xFF4A90E2),
+                ),
+                _buildStatCard(
+                  'orders',
+                  'Total Orders',
+                  Icons.shopping_cart_rounded,
+                  const Color(0xFFF39C12),
+                ),
+                _buildQueryStatCard(
+                  'Pending Orders',
+                  Icons.pending_actions_rounded,
+                  const Color(0xFFE74C3C),
+                  'Pending',
+                ),
+                _buildQueryStatCard(
+                  'Delivered',
+                  Icons.check_circle_rounded,
+                  const Color(0xFF2ECC71),
+                  'Delivered',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  // --- 🛠️ SIDEBAR WIDGET ---
-  Widget _buildSidebar(BuildContext context) {
-    return Drawer(
-      child: Column(
-        children: [
-          UserAccountsDrawerHeader(
-            decoration: const BoxDecoration(color: Color(0xFF285D66)),
-            currentAccountPicture: const CircleAvatar(
-              backgroundColor: Colors.white,
-              child: Icon(
-                Icons.admin_panel_settings,
-                color: Color(0xFF285D66),
-                size: 40,
-              ),
+  // --- WIDGETS ---
+
+  // Quick Action Button UI
+  Widget _quickActionButton({
+    required String title,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(15),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10,
             ),
-            accountName: const Text(
-              "Admin Portal",
-              style: TextStyle(fontWeight: FontWeight.bold),
+          ],
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          children: [
+            CircleAvatar(
+              backgroundColor: color.withValues(alpha: 0.15),
+              radius: 22,
+              child: Icon(icon, color: color, size: 24),
             ),
-            accountEmail: Text(
-              FirebaseAuth.instance.currentUser?.email ?? "admin@medicare.com",
+            const SizedBox(height: 10),
+            Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              textAlign: TextAlign.center,
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Normal Collection Count
+  Widget _buildStatCard(
+    String collectionName,
+    String title,
+    IconData icon,
+    Color color,
+  ) {
+    return FutureBuilder<AggregateQuerySnapshot>(
+      future: FirebaseFirestore.instance
+          .collection(collectionName)
+          .count()
+          .get(),
+      builder: (context, snapshot) {
+        String count = "0";
+        if (snapshot.hasData) {
+          count = snapshot.data!.count.toString();
+        } else if (snapshot.connectionState == ConnectionState.waiting) {
+          count = "...";
+        }
+        return _statCardUI(title, count, icon, color);
+      },
+    );
+  }
+
+  // Query Base Count
+  Widget _buildQueryStatCard(
+    String title,
+    IconData icon,
+    Color color,
+    String status,
+  ) {
+    return FutureBuilder<AggregateQuerySnapshot>(
+      future: FirebaseFirestore.instance
+          .collection('orders')
+          .where('status', isEqualTo: status)
+          .count()
+          .get(),
+      builder: (context, snapshot) {
+        String count = "0";
+        if (snapshot.hasData) {
+          count = snapshot.data!.count.toString();
+        } else if (snapshot.connectionState == ConnectionState.waiting) {
+          count = "...";
+        }
+        return _statCardUI(title, count, icon, color);
+      },
+    );
+  }
+
+  // Premium Stat Card UI
+  Widget _statCardUI(String title, String count, IconData icon, Color color) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.1),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
           ),
-
-          _sidebarItem(
-            Icons.inventory_2_outlined,
-            "Inventory",
-            () => Get.back(),
-          ),
-
-          // 📦 ORDERS ITEM
-          _sidebarItem(Icons.shopping_bag_outlined, "Customer Orders", () {
-            Get.back();
-            Get.to(() => const AdminOrdersScreen()); // Is screen ka code nichay hai
-          }),
-          // AdminDashboard file ke Drawer method mein ye add karein:
-          _sidebarItem(Icons.verified_outlined, "Verify Payments", () {
-            Navigator.pop(context); // Drawer close
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (c) => const PaymentVerificationScreen(),
-              ),
-            );
-          }),
-
-          const Divider(),
-
-          // 🌓 DARK MODE TOGGLE
-          ListTile(
-            leading: Icon(Get.isDarkMode ? Icons.light_mode : Icons.dark_mode),
-            title: Text(Get.isDarkMode ? "Switch to Light" : "Switch to Dark"),
-            trailing: Switch(
-              value: Get.isDarkMode,
-              onChanged: (value) {
-                Get.changeTheme(
-                  Get.isDarkMode ? ThemeData.light() : ThemeData.dark(),
-                );
-              },
-            ),
-          ),
-
-          const Spacer(),
-
-          _sidebarItem(Icons.logout_rounded, "Logout", () async {
-            await FirebaseAuth.instance.signOut();
-            Get.offAll(() => const LoginScreen());
-          }, color: Colors.red),
-          const SizedBox(height: 20),
         ],
       ),
-    );
-  }
-
-  Widget _sidebarItem(
-    IconData icon,
-    String title,
-    VoidCallback onTap, {
-    Color? color,
-  }) {
-    return ListTile(
-      leading: Icon(icon, color: color ?? const Color(0xFF285D66)),
-      title: Text(
-        title,
-        style: TextStyle(color: color, fontWeight: FontWeight.w500),
-      ),
-      onTap: onTap,
-    );
-  }
-
-  // Smart Image Logic (Jo hum ne pehle discuss kiya tha)
-  Widget _buildMedicineImage(String path) {
-    return Container(
-      width: 50,
-      height: 50,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        color: Colors.grey.withValues(alpha: 0.1),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: path.startsWith('http')
-            ? Image.network(
-                path,
-                fit: BoxFit.cover,
-                errorBuilder: (c, e, s) => const Icon(Icons.broken_image),
-              )
-            : Image.asset(
-                path,
-                fit: BoxFit.cover,
-                errorBuilder: (c, e, s) =>
-                    const Icon(Icons.image_not_supported),
-              ),
+      child: Stack(
+        // Stack use kiya taake background watermark icon laga sakein
+        children: [
+          // Background Watermark Icon
+          Positioned(
+            right: -15,
+            bottom: -15,
+            child: Icon(icon, size: 90, color: color.withValues(alpha: 0.1)),
+          ),
+          // Main Content
+          Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: color, size: 26),
+                ),
+                const Spacer(),
+                Text(
+                  count,
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -2,10 +2,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../login_screen.dart';
 import '../home_screen.dart';
 import '../onboarding_screen.dart';
 import '../notification_service.dart';
+// 🚨 ZAROORI: Apni Admin Dashboard ki file zaroor import karein
+import '../admin/admin_dashboard.dart'; // <-- Path apne folder k hisaab se theek kar lein
 
 class AuthController extends GetxController {
   static AuthController get instance => Get.find();
@@ -48,8 +51,13 @@ class AuthController extends GetxController {
       // Time update karein (Timer reset)
       await prefs.setInt('last_opened_timestamp', currentTime);
 
-      // User logged in hai -> Home
-      Get.offAll(() => const HomeScreen());
+      // 🛡️ ADMIN CHECK YAHAN LAGA HAI
+      if (user.email == 'hanzlaalvi0@gmail.com') {
+        // <-- Agar apna email rakha hai to yahan change karein
+        Get.offAll(() => const AdminDashboard());
+      } else {
+        Get.offAll(() => const HomeScreen());
+      }
     } else {
       // User logged in nahi hai -> Onboarding ya Login
       if (seenOnboarding) {
@@ -76,14 +84,22 @@ class AuthController extends GetxController {
       );
 
       isLoading.value = false;
-      Get.offAll(() => const HomeScreen()); // Navigate to Home
+
+      // 🛡️ ADMIN CHECK LOGIN K BAAD BHI LAGA HAI
+      if (_auth.currentUser?.email == 'hanzlaalvi0@gmail.com') {
+        // <-- Yahan bhi same email likhein
+        Get.offAll(() => const AdminDashboard());
+      } else {
+        Get.offAll(() => const HomeScreen());
+      }
     } on FirebaseAuthException catch (e) {
       isLoading.value = false;
       String message = "Login Failed";
-      if (e.code == 'user-not-found')
-        {message = "No user found for that email.";}
-      else if (e.code == 'wrong-password')
-        {message = "Wrong password provided.";}
+      if (e.code == 'user-not-found') {
+        message = "No user found for that email.";
+      } else if (e.code == 'wrong-password') {
+        message = "Wrong password provided.";
+      }
 
       Get.snackbar(
         "Error",

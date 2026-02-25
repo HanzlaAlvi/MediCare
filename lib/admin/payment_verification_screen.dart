@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'admin_drawer.dart'; // 👈 Sidebar import kiya
 
 class PaymentVerificationScreen extends StatelessWidget {
   const PaymentVerificationScreen({super.key});
@@ -8,20 +9,19 @@ class PaymentVerificationScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const AdminDrawer(), // 👈 Sidebar yahan lag gaya
       appBar: AppBar(
         title: const Text("Payment Proofs"),
         backgroundColor: const Color(0xFF285D66),
         foregroundColor: Colors.white,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // 🎯 Composite Index is REQUIRED for this query
         stream: FirebaseFirestore.instance
             .collection('orders')
             .where('hasProof', isEqualTo: true)
             .orderBy('timestamp', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
-          // 1. Check if error occurred (Index missing will show here)
           if (snapshot.hasError) {
             return Center(
               child: Padding(
@@ -35,12 +35,10 @@ class PaymentVerificationScreen extends StatelessWidget {
             );
           }
 
-          // 2. Show loading only when first connecting
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          // 3. Check if data exists
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             return const Center(child: Text("No proofs to verify."));
           }
@@ -81,7 +79,7 @@ class PaymentVerificationScreen extends StatelessWidget {
                                 base64Decode(base64String),
                                 width: double.infinity,
                                 fit: BoxFit.cover,
-                                gaplessPlayback: true, // Prevents flickering
+                                gaplessPlayback: true,
                               ),
                             )
                           : Container(
@@ -125,7 +123,6 @@ class PaymentVerificationScreen extends StatelessWidget {
     );
   }
 
-  // --- Same helper methods as before ---
   void _showFullScreenImage(BuildContext context, String base64) {
     showDialog(
       context: context,
