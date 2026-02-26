@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import 'dart:convert'; // Base64 encoding ke liye zaroori hai
+import 'dart:convert'; // Base64 encoding/decoding ke liye zaroori hai
 import 'dart:math';
 
 class AddEditMedicineScreen extends StatefulWidget {
@@ -65,14 +65,26 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
       mfgDateC.text = d['mfgDate'] ?? '';
       expiryDateC.text = d['expiryDate'] ?? '';
 
-      // Load existing image (either URL or Base64)
+      // 🛡️ SMART IMAGE LOADER FOR EDIT SCREEN (CRASH PROOF)
       if (d['images'] != null && (d['images'] as List).isNotEmpty) {
-        String existingImage = d['images'][0].toString();
-        if (existingImage.startsWith('http')) {
+        String existingImage = d['images'][0].toString().trim(); // Clean spaces
+
+        if (existingImage.startsWith('http') || existingImage.contains('assets/')) {
           imageUrlC.text = existingImage;
           _useUrl = true;
         } else {
-          _base64Image = existingImage;
+          // Agar Base64 hai toh usko securely load karein
+          String cleanBase64 = existingImage;
+          if (cleanBase64.contains(',')) {
+            cleanBase64 = cleanBase64.split(',').last;
+          }
+          cleanBase64 = cleanBase64.replaceAll(RegExp(r'[^A-Za-z0-9+/=]'), '');
+          
+          if (cleanBase64.length % 4 != 0) {
+            cleanBase64 += '=' * (4 - (cleanBase64.length % 4));
+          }
+
+          _base64Image = cleanBase64;
           _useUrl = false;
         }
       }
@@ -90,9 +102,7 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
     if (image != null) {
       File imgFile = File(image.path);
       List<int> imageBytes = await imgFile.readAsBytes();
-      String base64String = base64Encode(
-        imageBytes,
-      ); // 🛡️ Base64 mein convert ho gayi
+      String base64String = base64Encode(imageBytes);
 
       setState(() {
         _pickedImage = imgFile;
@@ -111,7 +121,7 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
     if (_useUrl && imageUrlC.text.trim().isEmpty) {
       Get.snackbar(
         "Error",
-        "Please provide an image URL or select a photo.",
+        "Please provide an image URL/Asset or select a photo.",
         backgroundColor: Colors.redAccent,
         colorText: Colors.white,
       );
@@ -144,7 +154,7 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
       'sideEffects': sideEffectsC.text.trim(),
       'mfgDate': mfgDateC.text.trim(),
       'expiryDate': expiryDateC.text.trim(),
-      'images': [finalImageUrl], // Yahan base64 string save ho jayegi!
+      'images': [finalImageUrl], 
       'timestamp': FieldValue.serverTimestamp(),
       'color': _isEditing
           ? (widget.medicineData?['color'] ?? _getRandomPastelColor())
@@ -214,6 +224,21 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
       "0xFFF1F8E9",
     ];
     return pastelColors[Random().nextInt(pastelColors.length)];
+  }
+
+  // 🛡️ SAFE IMAGE PROVIDER LOGIC
+  ImageProvider? _getPreviewImage() {
+    if (_pickedImage != null) {
+      return FileImage(_pickedImage!);
+    }
+    if (_base64Image.isNotEmpty) {
+      try {
+        return MemoryImage(base64Decode(_base64Image));
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
   }
 
   @override
@@ -310,6 +335,8 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
   }
 
   Widget _buildImageUploadSection() {
+    ImageProvider? previewImage = _getPreviewImage();
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -328,7 +355,7 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _choiceButton(
-                "Network URL",
+                "URL / Asset",
                 _useUrl,
                 () => setState(() => _useUrl = true),
               ),
@@ -342,7 +369,7 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
           ),
           const SizedBox(height: 20),
           _useUrl
-              ? _buildTextField(imageUrlC, "Paste Image URL")
+              ? _buildTextField(imageUrlC, "Paste Image URL or Asset Path")
               : GestureDetector(
                   onTap: _pickImage,
                   child: Container(
@@ -354,19 +381,14 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
                       border: Border.all(
                         color: const Color(0xFF285D66).withValues(alpha: 0.2),
                       ),
-                      image: _pickedImage != null
+                      image: previewImage != null
                           ? DecorationImage(
-                              image: FileImage(_pickedImage!),
-                              fit: BoxFit.cover,
-                            )
-                          : _base64Image.isNotEmpty
-                          ? DecorationImage(
-                              image: MemoryImage(base64Decode(_base64Image)),
+                              image: previewImage,
                               fit: BoxFit.cover,
                             )
                           : null,
                     ),
-                    child: _pickedImage == null && _base64Image.isEmpty
+                    child: previewImage == null
                         ? const Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [

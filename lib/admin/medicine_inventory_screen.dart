@@ -83,34 +83,42 @@ class MedicineInventoryScreen extends StatelessWidget {
   Widget _buildMedicineImage(String path) {
     Widget imageWidget;
 
-    if (path.isEmpty) {
+    // 1. Text ko clean karein (taake extra spaces/newlines khatam ho jayen)
+    String cleanPath = path.trim();
+
+    if (cleanPath.isEmpty) {
       imageWidget = const Icon(Icons.medication, color: Colors.grey);
-    } else if (path.startsWith('http')) {
-      // 1. Internet URL
+    } else if (cleanPath.startsWith('http')) {
+      // 2. Internet URL
       imageWidget = Image.network(
-        path,
+        cleanPath,
         fit: BoxFit.cover,
         errorBuilder: (c, e, s) =>
             const Icon(Icons.broken_image, color: Colors.grey),
       );
-    } else if (path.startsWith('assets/')) {
-      // 2. Local Asset
+    } else if (cleanPath.contains('assets/')) { 
+      // 3. Local Asset (contains lagaya taake space ho tab bhi pakar le)
       imageWidget = Image.asset(
-        path,
+        cleanPath,
         fit: BoxFit.cover,
         errorBuilder: (c, e, s) =>
             const Icon(Icons.broken_image, color: Colors.grey),
       );
     } else {
-      // 3. Base64 String (Jo abhi humne database me upload ki hai)
+      // 4. Base64 String 
       try {
-        String base64String = path;
-        // Agar image me 'data:image/jpeg;base64,' jaisa text ho toh use hata dein
-        if (path.contains(',')) {
-          base64String = path.split(',').last;
+        String base64String = cleanPath;
+        if (cleanPath.contains(',')) {
+          base64String = cleanPath.split(',').last;
         }
-        // White spaces ko clean karein
-        base64String = base64String.replaceAll(RegExp(r'\s+'), '');
+        
+        // Sirf a-z, A-Z, 0-9, +, /, = ko allow karein (Invalid characters remove)
+        base64String = base64String.replaceAll(RegExp(r'[^A-Za-z0-9+/=]'), '');
+
+        // Base64 padding fix
+        if (base64String.length % 4 != 0) {
+          base64String += '=' * (4 - (base64String.length % 4));
+        }
 
         imageWidget = Image.memory(
           base64Decode(base64String),
@@ -132,7 +140,7 @@ class MedicineInventoryScreen extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: imageWidget, // 👈 Smart image widget yahan lag gaya
+        child: imageWidget, 
       ),
     );
   }
