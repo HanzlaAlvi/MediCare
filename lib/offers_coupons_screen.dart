@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'rewards_controller.dart';
+import 'reward_controller.dart';
+import 'reward_success_screen.dart';
 
 class OffersCouponsScreen extends StatelessWidget {
   const OffersCouponsScreen({super.key});
