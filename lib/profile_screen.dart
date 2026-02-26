@@ -38,7 +38,6 @@ class ProfileScreen extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
-      // Obx sirf un widgets ko rebuild karta hai jinme controller ki value change ho
       body: Obx(() {
         if (controller.isLoading.value) {
           return const Center(
@@ -244,7 +243,11 @@ class ProfileScreen extends StatelessWidget {
                   const SizedBox(width: 15),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: () => AuthController.instance.logout(),
+                      onPressed: () {
+                        // 🛡️ THE ULTIMATE FIX: Memory clear ho jayegi
+                        Get.delete<ProfileController>();
+                        AuthController.instance.logout();
+                      },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF285D66),
                         shape: RoundedRectangleBorder(

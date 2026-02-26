@@ -6,7 +6,6 @@ class AddAddressScreen extends StatefulWidget {
   final String? docId; // Edit ke liye document ID
   final Map<String, dynamic>? existingData; // Pehle se majood data
 
-  // Constructor ko parameters ke sath define kiya gaya hai
   const AddAddressScreen({super.key, this.docId, this.existingData});
 
   @override
@@ -22,11 +21,11 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
   final TextEditingController _descController = TextEditingController();
 
   bool _isSaving = false;
+  final Color themeColor = const Color(0xFF285D66);
 
   @override
   void initState() {
     super.initState();
-    // Agar Edit mode hai (existingData null nahi hai), toh data fields mein bhar dein
     if (widget.existingData != null) {
       _nameController.text = widget.existingData!['fullName'] ?? '';
       _emailController.text = widget.existingData!['email'] ?? '';
@@ -39,9 +38,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
 
   Future<void> _processAddress() async {
     if (_nameController.text.isEmpty || _streetController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Name and Street are required")),
-      );
+      _showCustomSnackBar("Name and Street are required", isError: true);
       return;
     }
 
@@ -65,101 +62,165 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
       };
 
       if (widget.docId == null) {
-        // Naya address save karein
         await addressRef.add(data);
       } else {
-        // Purana address update karein
         await addressRef.doc(widget.docId).update(data);
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.docId == null ? "Address saved!" : "Address updated!",
-          ),
-        ),
+      _showCustomSnackBar(
+        widget.docId == null ? "Address saved successfully!" : "Address updated successfully!",
       );
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      _showCustomSnackBar("Error: $e", isError: true);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
   }
 
+  void _showCustomSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(isError ? Icons.error_outline : Icons.check_circle_outline, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message, style: const TextStyle(fontWeight: FontWeight.bold))),
+          ],
+        ),
+        backgroundColor: isError ? Colors.redAccent : Colors.green,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(20),
+        elevation: 5,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF9FAFB), 
       appBar: AppBar(
-        backgroundColor: const Color(0xFF285D66),
+        backgroundColor: themeColor,
         foregroundColor: Colors.white,
         centerTitle: true,
+        elevation: 0,
         title: Text(
           widget.docId == null ? "Add Address" : "Edit Address",
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
         ),
         leading: IconButton(
           onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back_ios),
+          icon: const Icon(Icons.arrow_back_ios_new, size: 20),
         ),
       ),
       body: _isSaving
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF285D66)),
+          ? Center(
+              child: CircularProgressIndicator(color: themeColor),
             )
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 30),
+              physics: const BouncingScrollPhysics(),
               child: Column(
                 children: [
-                  _buildInputField("Full Name", _nameController),
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: themeColor.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.add_location_alt_outlined,
+                      size: 50,
+                      color: themeColor,
+                    ),
+                  ),
                   const SizedBox(height: 15),
-                  _buildInputField("Email", _emailController),
-                  const SizedBox(height: 15),
-                  _buildInputField("Country", _countryController),
-                  const SizedBox(height: 15),
-                  _buildInputField("City", _cityController),
-                  const SizedBox(height: 15),
-                  _buildInputField("Street", _streetController),
-                  const SizedBox(height: 15),
-                  _buildInputField("Description", _descController, maxLines: 3),
-                  const SizedBox(height: 30),
+                  const Text(
+                    "Shipping Details",
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    "Enter your delivery address carefully",
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 14),
+                  ),
+                  const SizedBox(height: 35),
+
+                  _buildInputField("Full Name", _nameController, Icons.person_outline),
+                  const SizedBox(height: 20),
+                  
+                  _buildInputField("Email Address", _emailController, Icons.email_outlined),
+                  const SizedBox(height: 20),
+                  
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildInputField("Country", _countryController, Icons.public),
+                      ),
+                      const SizedBox(width: 15),
+                      Expanded(
+                        child: _buildInputField("City", _cityController, Icons.location_city),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  _buildInputField("Street Address", _streetController, Icons.map_outlined),
+                  const SizedBox(height: 20),
+                  
+                  _buildInputField(
+                    "Delivery Instructions (Optional)", 
+                    _descController, 
+                    Icons.description_outlined, 
+                    maxLines: 3,
+                  ),
+                  
+                  const SizedBox(height: 40),
+
                   SizedBox(
                     width: double.infinity,
                     height: 55,
                     child: ElevatedButton(
                       onPressed: _processAddress,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF285D66),
+                        backgroundColor: themeColor,
+                        shadowColor: themeColor.withValues(alpha: 0.5),
+                        elevation: 5,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(25),
+                          borderRadius: BorderRadius.circular(15),
                         ),
                       ),
                       child: Text(
-                        widget.docId == null
-                            ? "Save Address"
-                            : "Update Address",
+                        widget.docId == null ? "SAVE ADDRESS" : "UPDATE ADDRESS",
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 18,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
+                          letterSpacing: 1.2,
                         ),
                       ),
                     ),
                   ),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
     );
   }
 
+  // 🛡️ FIX: Height limit constraint issue solved here
   Widget _buildInputField(
     String label,
-    TextEditingController controller, {
+    TextEditingController controller,
+    IconData icon, {
     int maxLines = 1,
   }) {
     return Column(
@@ -167,22 +228,44 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+            color: Colors.grey.shade700,
+          ),
         ),
         const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          maxLines: maxLines,
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: Colors.grey.shade100,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(15),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 15,
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: Colors.grey.shade200, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.02),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: TextField(
+            controller: controller,
+            maxLines: maxLines,
+            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
+            decoration: InputDecoration(
+              // 🛡️ Icon ko prefixIcon ki bajaye directly define kiya hai taake height issue na aye
+              prefixIcon: Icon(icon, color: themeColor, size: 20),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 16,
+              ),
+              hintText: "Enter $label",
+              hintStyle: TextStyle(
+                color: Colors.grey.shade400,
+                fontWeight: FontWeight.normal,
+                fontSize: 13,
+              ),
             ),
           ),
         ),
