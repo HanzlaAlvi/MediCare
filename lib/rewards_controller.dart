@@ -1,68 +1,60 @@
-import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
 
 class RewardsController extends GetxController {
-  final User? user = FirebaseAuth.instance.currentUser;
-
-  // Observables
   var points = 0.obs;
   var streak = 0.obs;
-  var referralCode = "Generating...".obs;
   var isClaimedToday = false.obs;
   var isLoading = true.obs;
+  var referralCode = "MED-123".obs;
+
+  final String userId = FirebaseAuth.instance.currentUser?.uid ?? "";
 
   @override
   void onInit() {
     super.onInit();
-    if (user != null) {
-      _ensureCodeExists();
-      listenToUserData();
-    }
+    fetchUserRewards();
   }
 
-  // Real-time listener (Super Fast Updates)
-  void listenToUserData() {
+  // 📥 DB se Data lana
+  void fetchUserRewards() {
+    if (userId.isEmpty) return;
+    
     FirebaseFirestore.instance
         .collection('users')
-        .doc(user!.uid)
+        .doc(userId)
         .snapshots()
         .listen((snapshot) {
-          if (snapshot.exists) {
-            var data = snapshot.data() as Map<String, dynamic>;
-            points.value = data['points'] ?? 0;
-            streak.value = data['streak'] ?? 0;
-            referralCode.value = data['referralCode'] ?? "Generating...";
-
-            Timestamp? lastCheckIn = data['lastCheckIn'];
-            if (lastCheckIn != null) {
-              DateTime lastDate = lastCheckIn.toDate();
-              DateTime now = DateTime.now();
-              isClaimedToday.value =
-                  (lastDate.day == now.day &&
-                  lastDate.month == now.month &&
-                  lastDate.year == now.year);
-            }
-          }
-          isLoading.value = false;
-        });
+      if (snapshot.exists) {
+        var data = snapshot.data() as Map<String, dynamic>;
+        points.value = data['points'] ?? 0;
+        streak.value = data['streak'] ?? 0;
+        
+        // Check karein kya aaj claim kiya hai (lastClaim date se)
+        String lastClaim = data['lastClaimDate'] ?? "";
+        String today = DateTime.now().toString().substring(0, 10); // YYYY-MM-DD
+        isClaimedToday.value = (lastClaim == today);
+      }
+      isLoading.value = false;
+    });
   }
 
-  Future<void> _ensureCodeExists() async {
-    final userRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user!.uid);
-    final doc = await userRef.get();
-    if (doc.exists &&
-        (doc.data()?['referralCode'] == null ||
-            doc.data()?['referralCode'] == "")) {
-      await userRef.update({'referralCode': _generateRandomCode()});
+  // 📤 DB mein Reward save karna (Claim Logic)
+  Future<void> claimDailyReward() async {
+    try {
+      String today = DateTime.now().toString().substring(0, 10);
+      int rewardAmount = (streak.value + 1) * 10; // Simple calculation
+
+      await FirebaseFirestore.instance.collection('users').doc(userId).update({
+        'points': FieldValue.increment(rewardAmount),
+        'streak': streak.value >= 6 ? 0 : FieldValue.increment(1), // 7 din baad reset
+        'lastClaimDate': today,
+      });
+
+      Get.snackbar("Success", "You earned $rewardAmount points!");
+    } catch (e) {
+      Get.snackbar("Error", "Could not claim reward: $e");
     }
-  }
-
-  String _generateRandomCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    return "MED-${List.generate(6, (index) => chars[Random().nextInt(chars.length)]).join()}";
   }
 }
