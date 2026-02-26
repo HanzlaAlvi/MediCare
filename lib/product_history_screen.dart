@@ -57,9 +57,6 @@ class ProductHistoryScreen extends StatelessWidget {
           for (var doc in snapshot.data!.docs) {
             var orderData = doc.data() as Map<String, dynamic>;
 
-            // --- THE ULTIMATE FIX ---
-            // Purane strings ko completely ignore kar diya hai.
-            // Sirf asli Timestamp par depend karenge.
             String dateKey = "Today";
 
             try {
@@ -69,7 +66,7 @@ class ProductHistoryScreen extends StatelessWidget {
                 dateKey = _formatDate(dt);
               }
             } catch (e) {
-              dateKey = "Today"; // Fallback to Today
+              dateKey = "Today"; 
             }
 
             List items = orderData['items'] ?? [];

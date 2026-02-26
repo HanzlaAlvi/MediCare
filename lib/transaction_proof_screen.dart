@@ -97,24 +97,29 @@ class _TransactionProofScreenState extends State<TransactionProofScreen> {
       await firestore.runTransaction((transaction) async {
         // A. Stock Update Karein
         for (var item in widget.cartItems) {
-          String itemName = item['name'];
-          int qtyOrdered = item['qty'] ?? 1;
+          String itemName = item['name'] ?? '';
 
-          QuerySnapshot medSearch = await firestore
-              .collection('medicines')
-              .where('name', isEqualTo: itemName)
-              .limit(1)
-              .get();
+          // 🛡️ FIX: Safe Qty Parsing (Int/String Crash ka ilaj)
+          int qtyOrdered = int.tryParse(item['qty']?.toString() ?? '1') ?? 1;
 
-          if (medSearch.docs.isNotEmpty) {
-            DocumentReference medRef = medSearch.docs.first.reference;
-            DocumentSnapshot medDoc = await transaction.get(medRef);
+          if (itemName.isNotEmpty) {
+            QuerySnapshot medSearch = await firestore
+                .collection('medicines')
+                .where('name', isEqualTo: itemName)
+                .limit(1)
+                .get();
 
-            if (medDoc.exists) {
-              int currentStock = int.tryParse(medDoc['stock'].toString()) ?? 0;
-              transaction.update(medRef, {
-                'stock': (currentStock - qtyOrdered).clamp(0, 999),
-              });
+            if (medSearch.docs.isNotEmpty) {
+              DocumentReference medRef = medSearch.docs.first.reference;
+              DocumentSnapshot medDoc = await transaction.get(medRef);
+
+              if (medDoc.exists) {
+                int currentStock =
+                    int.tryParse(medDoc['stock'].toString()) ?? 0;
+                transaction.update(medRef, {
+                  'stock': (currentStock - qtyOrdered).clamp(0, 999),
+                });
+              }
             }
           }
         }

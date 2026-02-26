@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'dart:convert'; // 🛡️ Base64 decode karne ke liye laazmi hai
 
 class OrderHistoryScreen extends StatelessWidget {
   const OrderHistoryScreen({super.key});
@@ -148,23 +149,56 @@ class OrderHistoryScreen extends StatelessWidget {
     );
   }
 
-  // --- PREMIUM PRODUCT CARD ---
+  // --- PREMIUM PRODUCT CARD (CRASH PROOF) ---
   Widget _buildPremiumProductCard(Map<String, dynamic> item) {
-    String name = item['name'] ?? 'Unknown';
-    String brand = item['brand'] ?? 'PharmaPro';
-    String price = item['price'] ?? "Rs. 0";
-    int qty = item['qty'] ?? 1;
-    String imagePath = item['image'] ?? '';
+    // 🛡️ 1. Safe Data Parsing (Ye String aur Int ka error khatam karega)
+    String name = item['name']?.toString() ?? 'Unknown';
+    String brand = item['brand']?.toString() ?? 'PharmaPro';
+    String price = item['price']?.toString() ?? "0";
+    int qty =
+        int.tryParse(item['qty']?.toString() ?? '1') ??
+        1; // 👈 FIX: Int/String issue solved here
 
-    ImageProvider imgProvider;
-    if (imagePath.startsWith('http')) {
-      imgProvider = NetworkImage(imagePath);
-    } else if (imagePath.isNotEmpty) {
-      imgProvider = AssetImage(imagePath);
-    } else {
-      imgProvider = const NetworkImage(
-        'https://cdn-icons-png.flaticon.com/512/883/883407.png',
+    // 🛡️ 2. Smart Image Builder (Ye Base64 wala error khatam karega)
+    String imagePath = item['image']?.toString() ?? '';
+    Widget imageWidget;
+    String cleanPath = imagePath.trim();
+
+    if (cleanPath.isEmpty) {
+      imageWidget = const Icon(Icons.medication, color: Colors.grey);
+    } else if (cleanPath.startsWith('http')) {
+      imageWidget = Image.network(
+        cleanPath,
+        fit: BoxFit.contain,
+        errorBuilder: (c, e, s) =>
+            const Icon(Icons.broken_image, color: Colors.grey),
       );
+    } else if (cleanPath.contains('assets/')) {
+      imageWidget = Image.asset(
+        cleanPath,
+        fit: BoxFit.contain,
+        errorBuilder: (c, e, s) =>
+            const Icon(Icons.broken_image, color: Colors.grey),
+      );
+    } else {
+      try {
+        String base64String = cleanPath;
+        if (cleanPath.contains(',')) {
+          base64String = cleanPath.split(',').last;
+        }
+        base64String = base64String.replaceAll(RegExp(r'[^A-Za-z0-9+/=]'), '');
+        if (base64String.length % 4 != 0) {
+          base64String += '=' * (4 - (base64String.length % 4));
+        }
+        imageWidget = Image.memory(
+          base64Decode(base64String),
+          fit: BoxFit.contain,
+          errorBuilder: (c, e, s) =>
+              const Icon(Icons.broken_image, color: Colors.grey),
+        );
+      } catch (e) {
+        imageWidget = const Icon(Icons.medication, color: Colors.grey);
+      }
     }
 
     return Container(
@@ -176,7 +210,9 @@ class OrderHistoryScreen extends StatelessWidget {
         border: Border.all(color: Colors.grey.shade100, width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03), // Faint, premium shadow
+            color: Colors.black.withValues(
+              alpha: 0.03,
+            ), // Faint, premium shadow
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -197,7 +233,7 @@ class OrderHistoryScreen extends StatelessWidget {
               padding: const EdgeInsets.all(8.0),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: Image(image: imgProvider, fit: BoxFit.contain),
+                child: imageWidget, // 👈 Safe Image yahan show hogi
               ),
             ),
           ),
