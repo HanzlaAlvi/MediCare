@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'login_screen.dart'; // Make sure the filename is correct
-import 'components.dart';
+import 'login_screen.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -18,19 +17,30 @@ class _SignupScreenState extends State<SignupScreen> {
   final _confirmPasswordController = TextEditingController();
 
   bool _isLoading = false;
+  bool _isPasswordVisible = false; // 👁️ Password ke liye
+  bool _isConfirmPasswordVisible = false; // 👁️ Confirm Password ke liye
+
+  final Color themeColor = const Color(0xFF285D66);
+  final Color lightThemeColor = const Color(0xFF4DB6AC);
 
   // --- VALIDATION LOGIC ---
   bool _validateInput() {
     String username = _usernameController.text.trim();
-    String email = _emailController.text.trim();
+    String email = _emailController.text.trim().toLowerCase();
     String password = _passwordController.text.trim();
     String confirmPass = _confirmPasswordController.text.trim();
+
+    // 🎯 AUTO-FIX EMAIL (Agar sirf username likha hai)
+    if (!email.contains('@') && email.isNotEmpty) {
+      email = "$email@gmail.com";
+      _emailController.text = email; // UI me update kar dega
+    }
 
     if (username.isEmpty ||
         email.isEmpty ||
         password.isEmpty ||
         confirmPass.isEmpty) {
-      _showSnackBar("Please fill all fields.");
+      _showSnackBar("Please fill all fields.", isError: true);
       return false;
     }
 
@@ -38,38 +48,54 @@ class _SignupScreenState extends State<SignupScreen> {
     bool emailValid = RegExp(
       r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+",
     ).hasMatch(email);
+
     if (!emailValid || !email.endsWith("@gmail.com")) {
-      _showSnackBar("Please enter a valid @gmail.com address.");
+      _showSnackBar("Please enter a valid @gmail.com address.", isError: true);
       return false;
     }
 
     // Password Length Check
     if (password.length < 8) {
-      _showSnackBar("Password must be at least 8 characters.");
+      _showSnackBar("Password must be at least 8 characters.", isError: true);
       return false;
     }
 
     // Match Check
     if (password != confirmPass) {
-      _showSnackBar("Passwords do not match.");
+      _showSnackBar("Passwords do not match.", isError: true);
       return false;
     }
 
     return true;
   }
 
-  void _showSnackBar(String message) {
+  void _showSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
-        backgroundColor: const Color(0xFF285D66),
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: isError ? Colors.redAccent : Colors.green,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(20),
+        elevation: 5,
       ),
     );
   }
 
-  // --- REGISTRATION LOGIC ---
   // --- REGISTRATION LOGIC ---
   Future<void> _handleSignup() async {
     if (!_validateInput()) return;
@@ -88,10 +114,7 @@ class _SignupScreenState extends State<SignupScreen> {
         await userCredential.user!.sendEmailVerification();
 
         // 🎯 ADMIN ROLE LOGIC:
-        // Agar username ke sath humne koi secret code likha ho (e.g. "admin_786")
-        // Ya aap yahan check kar sakte hain specific email ko
         String role = "user"; // Default role
-
         if (_usernameController.text.trim().contains("ADMIN123")) {
           role = "admin";
         }
@@ -105,9 +128,9 @@ class _SignupScreenState extends State<SignupScreen> {
               'username': _usernameController.text.trim().replaceAll(
                 "ADMIN123",
                 "",
-              ), // Code hata kar real name save karein
+              ),
               'email': _emailController.text.trim(),
-              'role': role, // 👈 Yeh field Admin check ke liye zaroori hai
+              'role': role,
               'profilePic': '',
               'createdAt': FieldValue.serverTimestamp(),
             });
@@ -120,24 +143,38 @@ class _SignupScreenState extends State<SignupScreen> {
       }
     } on FirebaseAuthException catch (e) {
       setState(() => _isLoading = false);
-      _showSnackBar(e.message ?? "An error occurred during signup.");
+      _showSnackBar(
+        e.message ?? "An error occurred during signup.",
+        isError: true,
+      );
     }
   }
+
   void _showSuccessDialog(String email) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          "Verify Email",
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: const Row(
+          children: [
+            Icon(Icons.mark_email_read, color: Color(0xFF285D66), size: 28),
+            SizedBox(width: 10),
+            Text("Verify Email", style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
         ),
         content: Text(
-          "A verification link has been sent to $email. Please verify to login.",
+          "A verification link has been sent to $email. Please verify your email to login.",
+          style: const TextStyle(height: 1.4),
         ),
         actions: [
-          TextButton(
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: themeColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
             onPressed: () {
               Navigator.pop(context);
               Navigator.pushReplacement(
@@ -147,7 +184,10 @@ class _SignupScreenState extends State<SignupScreen> {
             },
             child: const Text(
               "Go to Login",
-              style: TextStyle(color: Color(0xFF285D66)),
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -158,89 +198,247 @@ class _SignupScreenState extends State<SignupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFADDDE6),
-      body: Stack(
-        children: [
-          const BackgroundCurve(),
-          Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 30),
+      backgroundColor: Colors.white,
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // --- TOP HEADER (GRADIENT) ---
+            Container(
+              height:
+                  MediaQuery.of(context).size.height *
+                  0.35, // Thora chota header taake fields fit aa jayein
+              width: double.infinity,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [themeColor, lightThemeColor],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(50),
+                  bottomRight: Radius.circular(50),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: themeColor.withValues(alpha: 0.3),
+                    blurRadius: 15,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: SafeArea(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(15),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.person_add_alt_1_outlined,
+                        size: 50,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    const Text(
+                      'Create Account',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    const Text(
+                      'Join MediCare today',
+                      style: TextStyle(fontSize: 14, color: Colors.white70),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // --- FORM SECTION ---
+            Padding(
+              padding: const EdgeInsets.all(30.0),
               child: Column(
                 children: [
-                  const SizedBox(height: 60),
-                  const Text(
-                    'Sign Up',
-                    style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Create your account to get started',
-                    style: TextStyle(fontSize: 16, color: Colors.black54),
-                  ),
-                  const SizedBox(height: 40),
-
-                  // Fields
-                  MyTextField(
-                    hint: 'Username',
-                    controller: _usernameController,
-                  ),
-                  const SizedBox(height: 15),
-                  MyTextField(hint: 'Email', controller: _emailController),
-                  const SizedBox(height: 15),
-                  MyTextField(
-                    hint: 'Password',
-                    isPassword: true,
-                    controller: _passwordController,
+                  // USERNAME FIELD
+                  Container(
+                    decoration: _fieldDecoration(),
+                    child: TextField(
+                      controller: _usernameController,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                      decoration: InputDecoration(
+                        hintText: 'Username',
+                        hintStyle: TextStyle(color: Colors.grey.shade400),
+                        prefixIcon: Icon(
+                          Icons.person_outline,
+                          color: themeColor,
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 18,
+                        ),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 15),
-                  MyTextField(
-                    hint: 'Confirm Password',
-                    isPassword: true,
-                    controller: _confirmPasswordController,
+
+                  // EMAIL FIELD
+                  Container(
+                    decoration: _fieldDecoration(),
+                    child: TextField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                      decoration: InputDecoration(
+                        hintText: 'Email or Username',
+                        hintStyle: TextStyle(color: Colors.grey.shade400),
+                        prefixIcon: Icon(
+                          Icons.email_outlined,
+                          color: themeColor,
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 18,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+
+                  // PASSWORD FIELD
+                  Container(
+                    decoration: _fieldDecoration(),
+                    child: TextField(
+                      controller: _passwordController,
+                      obscureText: !_isPasswordVisible,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                      decoration: InputDecoration(
+                        hintText: 'Password',
+                        hintStyle: TextStyle(color: Colors.grey.shade400),
+                        prefixIcon: Icon(Icons.lock_outline, color: themeColor),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 18,
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _isPasswordVisible
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                            color: Colors.grey,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isPasswordVisible = !_isPasswordVisible;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+
+                  // CONFIRM PASSWORD FIELD
+                  Container(
+                    decoration: _fieldDecoration(),
+                    child: TextField(
+                      controller: _confirmPasswordController,
+                      obscureText: !_isConfirmPasswordVisible,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                      decoration: InputDecoration(
+                        hintText: 'Confirm Password',
+                        hintStyle: TextStyle(color: Colors.grey.shade400),
+                        prefixIcon: Icon(
+                          Icons.lock_reset_outlined,
+                          color: themeColor,
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 18,
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _isConfirmPasswordVisible
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                            color: Colors.grey,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isConfirmPasswordVisible =
+                                  !_isConfirmPasswordVisible;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
                   ),
 
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 35),
 
-                  // Signup Button
+                  // SIGNUP BUTTON
                   SizedBox(
                     width: double.infinity,
                     height: 55,
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _handleSignup,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF285D66),
+                        backgroundColor: themeColor,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(15),
                         ),
+                        elevation: 5,
+                        shadowColor: themeColor.withValues(alpha: 0.5),
                       ),
                       child: _isLoading
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text(
-                              'Sign Up',
-                              style: TextStyle(
-                                fontSize: 20,
+                          ? const SizedBox(
+                              height: 25,
+                              width: 25,
+                              child: CircularProgressIndicator(
                                 color: Colors.white,
+                                strokeWidth: 3,
+                              ),
+                            )
+                          : const Text(
+                              'SIGN UP',
+                              style: TextStyle(
+                                fontSize: 18,
                                 fontWeight: FontWeight.bold,
+                                letterSpacing: 1.5,
+                                color: Colors.white,
                               ),
                             ),
                     ),
                   ),
 
-                  const SizedBox(height: 25),
+                  const SizedBox(height: 30),
 
-                  // Navigation to Login
+                  // LOGIN LINK
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text("Already have an account? "),
+                      Text(
+                        "Already have an account? ",
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 15,
+                        ),
+                      ),
                       GestureDetector(
                         onTap: () => Navigator.pop(context), // Wapis Login pe
-                        child: const Text(
+                        child: Text(
                           "Login",
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF285D66),
-                            decoration: TextDecoration.underline,
+                            fontSize: 15,
+                            color: themeColor,
                           ),
                         ),
                       ),
@@ -249,9 +447,25 @@ class _SignupScreenState extends State<SignupScreen> {
                 ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
+
+  // Reusable decoration for TextFields to make them look premium
+  BoxDecoration _fieldDecoration() {
+    return BoxDecoration(
+      color: Colors.grey.shade50,
+      borderRadius: BorderRadius.circular(15),
+      border: Border.all(color: Colors.grey.shade200, width: 1.5),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.02),
+          blurRadius: 10,
+          offset: const Offset(0, 4),
+        ),
+      ],
     );
   }
 }
