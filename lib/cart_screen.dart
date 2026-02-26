@@ -21,6 +21,7 @@ class _CartScreenState extends State<CartScreen> {
   double parsePrice(dynamic price) {
     if (price == null) return 0.0;
     if (price is num) return price.toDouble();
+    // 🛡️ Safe string conversion
     String p = price.toString().toLowerCase();
     p = p.replaceAll('rs.', '').replaceAll('rs', '').replaceAll('pkr', '');
     p = p.replaceAll(RegExp(r'[^0-9.]'), '');
@@ -140,9 +141,22 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   Widget _buildCartCard(Map<String, dynamic> item, String docId) {
+    // 🛡️ 100% Null-Safe Data Extraction (Is se app kabhi crash nahi hogi)
     int qty = parseQty(item['qty']);
     double unitPrice = parsePrice(item['price']);
-    String imagePath = item['image'].toString();
+    String name = item['name']?.toString() ?? 'Unknown Product';
+    String brand = item['brand']?.toString() ?? 'No Brand';
+
+    // Image handling: Check both 'image' (string) and 'images' (array) fields
+    String imagePath = '';
+    if (item['image'] != null && item['image'].toString() != 'null') {
+      imagePath = item['image'].toString();
+    } else if (item['images'] != null &&
+        item['images'] is List &&
+        (item['images'] as List).isNotEmpty) {
+      imagePath = item['images'][0].toString();
+    }
+
     bool isSelected = selectedDocIds.contains(docId);
 
     return Container(
@@ -190,15 +204,22 @@ class _CartScreenState extends State<CartScreen> {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: imagePath.startsWith('http')
+              child: imagePath.isNotEmpty && imagePath.startsWith('http')
                   ? Image.network(imagePath, fit: BoxFit.contain)
-                  : Image.asset(
+                  : imagePath.isNotEmpty
+                  ? Image.asset(
                       imagePath,
                       fit: BoxFit.contain,
                       errorBuilder: (c, o, s) => Icon(
                         Icons.medication,
                         color: themeColor.withValues(alpha: 0.5),
                       ),
+                    )
+                  : Icon(
+                      // Default icon agar koi image na ho
+                      Icons.medication,
+                      color: themeColor.withValues(alpha: 0.5),
+                      size: 30,
                     ),
             ),
           ),
@@ -214,7 +235,7 @@ class _CartScreenState extends State<CartScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        item['name'] ?? 'Product',
+                        name,
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 15,
@@ -223,7 +244,7 @@ class _CartScreenState extends State<CartScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    // 4. Delete Icon (Top Right of Info Section)
+                    // 4. Delete Icon
                     GestureDetector(
                       onTap: () => _removeItem(docId),
                       child: const Icon(
@@ -235,11 +256,11 @@ class _CartScreenState extends State<CartScreen> {
                   ],
                 ),
                 Text(
-                  item['brand'] ?? '',
+                  brand,
                   style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
                 ),
                 const SizedBox(height: 12),
-                // 5. Horizontal Row for Price and Counter
+                // 5. Row for Price and Counter
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -354,11 +375,33 @@ class _CartScreenState extends State<CartScreen> {
               onPressed: selectedItems.isEmpty
                   ? null
                   : () {
+                      // 🛡️ BHEJNE SE PEHLE DATA KO 100% SAFE KARNA HAI
+                      List<Map<String, dynamic>> safeItems = selectedItems.map((
+                        item,
+                      ) {
+                        return {
+                          'name': item['name']?.toString() ?? 'Medicine',
+                          'price': item['price']?.toString() ?? '0',
+                          'qty': item['qty']?.toString() ?? '1',
+                          // Handle both 'image' and 'images' gracefully
+                          'image':
+                              (item['image'] != null &&
+                                  item['image'].toString() != 'null')
+                              ? item['image'].toString()
+                              : (item['images'] != null &&
+                                    item['images'] is List &&
+                                    (item['images'] as List).isNotEmpty)
+                              ? item['images'][0].toString()
+                              : '',
+                        };
+                      }).toList();
+
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (c) => CheckOutScreen(
-                            cartItems: selectedItems,
+                            cartItems:
+                                safeItems, // Safe data pass kar rahay hain
                             totalAmount: total,
                           ),
                         ),
@@ -388,7 +431,6 @@ class _CartScreenState extends State<CartScreen> {
       ),
     );
   }
-
   Widget _summaryRow(String title, String val) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),

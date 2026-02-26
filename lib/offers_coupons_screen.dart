@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'reward_controller.dart';
-import 'reward_success_screen.dart';
+//import 'reward_success_screen.dart';
 
 class OffersCouponsScreen extends StatelessWidget {
   const OffersCouponsScreen({super.key});
@@ -227,10 +227,33 @@ class OffersCouponsScreen extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             height: 50,
+            // child: ElevatedButton(
+            //   onPressed: controller.isClaimedToday.value
+            //       ? null
+            //       : () {}, // Logic here
+            //   style: ElevatedButton.styleFrom(
+            //     backgroundColor: const Color(0xFF285D66),
+            //     disabledBackgroundColor: Colors.grey.shade300,
+            //     shape: RoundedRectangleBorder(
+            //       borderRadius: BorderRadius.circular(15),
+            //     ),
+            //   ),
+            //   child: Text(
+            //     controller.isClaimedToday.value
+            //         ? "Claimed Today"
+            //         : "Claim Day ${controller.streak.value + 1} Reward",
+            //     style: const TextStyle(
+            //       fontWeight: FontWeight.bold,
+            //       color: Colors.white,
+            //     ),
+            //   ),
+            // ),
+            // offers_coupons_screen.dart mein button change karein
             child: ElevatedButton(
               onPressed: controller.isClaimedToday.value
-                  ? null
-                  : () {}, // Logic here
+                  ? null // Agar aaj claim ho chuka hai toh button disable hoga
+                  : () => controller
+                        .claimDailyReward(), // 👈 Naya function call kiya
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF285D66),
                 disabledBackgroundColor: Colors.grey.shade300,
@@ -248,6 +271,7 @@ class OffersCouponsScreen extends StatelessWidget {
                 ),
               ),
             ),
+
           ),
         ],
       ),

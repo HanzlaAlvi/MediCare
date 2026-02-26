@@ -14,25 +14,22 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = Get.put(HomeController());
 
-    // --- 🎯 ADDED INDEX 4 FOR UPLOAD SCREEN ---
     final List<Widget> pages = [
       const HomeTab(),
       const CategoriesScreen(),
       const OrdersScreen(),
       const ProfileScreen(),
-      const UploadPrescriptionScreen(isFromTab: true), // Plus button mode
+      const UploadPrescriptionScreen(isFromTab: true), 
     ];
 
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
       extendBody: true,
 
-      // 🛡️ YEH LINE ADD KI HAI - Is se Plus button apni jagah par fix rahega!
       resizeToAvoidBottomInset: false,
 
       body: Obx(() => pages[controller.selectedIndex.value]),
 
-      // --- ➕ CENTRAL PLUS BUTTON ---
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: Obx(() {
         bool isUploadActive = controller.selectedIndex.value == 4;

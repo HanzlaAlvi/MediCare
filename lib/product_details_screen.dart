@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'dart:convert'; // 🛡️ Base64 decode karne ke liye laazmi hai
 import 'cart_screen.dart';
 
 class ProductDetailsScreen extends StatefulWidget {
@@ -85,6 +86,56 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     }
   }
 
+  // 🛡️ SMART IMAGE BUILDER FOR PRODUCT DETAILS
+  Widget _buildProductImage(String imageUrl) {
+    if (imageUrl.isEmpty) {
+      return const Icon(
+        Icons.image_not_supported,
+        size: 80,
+        color: Colors.grey,
+      );
+    }
+    if (imageUrl.startsWith('http')) {
+      // 1. Internet URL
+      return Image.network(
+        imageUrl,
+        fit: BoxFit.contain,
+        errorBuilder: (c, e, s) =>
+            const Icon(Icons.broken_image, size: 80, color: Colors.grey),
+      );
+    } else if (imageUrl.startsWith('assets/')) {
+      // 2. Local Asset
+      return Image.asset(
+        imageUrl,
+        fit: BoxFit.contain,
+        errorBuilder: (c, e, s) =>
+            const Icon(Icons.broken_image, size: 80, color: Colors.grey),
+      );
+    } else {
+      // 3. Base64 String
+      try {
+        String base64String = imageUrl;
+        if (imageUrl.contains(',')) {
+          base64String = imageUrl.split(',').last;
+        }
+        base64String = base64String.replaceAll(RegExp(r'\s+'), '');
+
+        return Image.memory(
+          base64Decode(base64String),
+          fit: BoxFit.contain,
+          errorBuilder: (c, e, s) =>
+              const Icon(Icons.broken_image, size: 80, color: Colors.grey),
+        );
+      } catch (e) {
+        return const Icon(
+          Icons.image_not_supported,
+          size: 80,
+          color: Colors.grey,
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -104,7 +155,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                             setState(() => _currentImageIndex = index),
                         itemBuilder: (context, index) {
                           String imagePath = widget.images[index];
-                          bool isNetwork = imagePath.startsWith('http');
                           return Padding(
                             padding: const EdgeInsets.only(
                               top: 60,
@@ -112,36 +162,19 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                               left: 20,
                               right: 20,
                             ),
-                            child: isNetwork
-                                ? Image.network(
-                                    imagePath,
-                                    fit: BoxFit.contain,
-                                    errorBuilder:
-                                        (context, error, stackTrace) =>
-                                            const Icon(
-                                              Icons.image,
-                                              size: 80,
-                                              color: Colors.grey,
-                                            ),
-                                  )
-                                : Image.asset(
-                                    imagePath,
-                                    fit: BoxFit.contain,
-                                    errorBuilder:
-                                        (context, error, stackTrace) =>
-                                            const Icon(
-                                              Icons.image,
-                                              size: 80,
-                                              color: Colors.grey,
-                                            ),
-                                  ),
+                            child: _buildProductImage(
+                              imagePath,
+                            ), // 👈 Smart Builder called here
                           );
                         },
                       )
-                    : const Icon(
-                        Icons.image_not_supported,
-                        size: 80,
-                        color: Colors.grey,
+                    : const Padding(
+                        padding: EdgeInsets.only(top: 60),
+                        child: Icon(
+                          Icons.image_not_supported,
+                          size: 80,
+                          color: Colors.grey,
+                        ),
                       ),
               ),
               // Back Button

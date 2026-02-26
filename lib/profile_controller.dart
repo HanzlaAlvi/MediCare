@@ -35,7 +35,7 @@ class ProfileController extends GetxController {
               isLoading.value = false;
               // 🛡️ FIX: Agar user logout ho chuka hai, toh error mat dikhao
               if (FirebaseAuth.instance.currentUser != null) {
-                print("Firestore Error: $e");
+                //print("Firestore Error: $e");
                 Get.snackbar("Error", "Failed to load profile.");
               }
             },

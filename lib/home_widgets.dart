@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -193,7 +194,6 @@ class CategorySelector extends StatelessWidget {
     );
   }
 }
-
 // --- MEDICINE CARD ---
 class MedicineCard extends StatelessWidget {
   final String name, brand, price, rating, imageUrl;
@@ -215,6 +215,39 @@ class MedicineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 🛡️ SMART IMAGE BUILDER: Yeh khud check karega image kis type ki hai
+    Widget buildImage() {
+      if (imageUrl.isEmpty) {
+        return Icon(Icons.medication, size: 50, color: color);
+      }
+      if (imageUrl.startsWith('http')) {
+        // 1. Internet URL
+        return Image.network(
+          imageUrl,
+          fit: BoxFit.contain,
+          errorBuilder: (c, e, s) => Icon(Icons.broken_image, color: color),
+        );
+      } else if (imageUrl.startsWith('assets/')) {
+        // 2. Local Asset
+        return Image.asset(
+          imageUrl,
+          fit: BoxFit.contain,
+          errorBuilder: (c, e, s) => Icon(Icons.broken_image, color: color),
+        );
+      } else {
+        // 3. Base64 String (Jo aapne database me upload ki hai)
+        try {
+          return Image.memory(
+            base64Decode(imageUrl),
+            fit: BoxFit.contain,
+            errorBuilder: (c, e, s) => Icon(Icons.broken_image, color: color),
+          );
+        } catch (e) {
+          return Icon(Icons.medication, size: 50, color: color);
+        }
+      }
+    }
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -237,6 +270,7 @@ class MedicineCard extends StatelessWidget {
               flex: 3,
               child: Container(
                 width: double.infinity,
+                padding: const EdgeInsets.all(8), // Image ko thora space denge
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.1),
                   borderRadius: const BorderRadius.vertical(
@@ -245,9 +279,8 @@ class MedicineCard extends StatelessWidget {
                 ),
                 child: Hero(
                   tag: name,
-                  child: imageUrl.startsWith('http')
-                      ? Image.network(imageUrl, fit: BoxFit.contain)
-                      : Image.asset(imageUrl, fit: BoxFit.contain),
+                  child:
+                      buildImage(), // 👈 Yahan humne naya function call kar diya
                 ),
               ),
             ),

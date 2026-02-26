@@ -1,7 +1,9 @@
 import 'dart:math';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
+import 'reward_success_screen.dart';
 
 class RewardsController extends GetxController {
   final User? user = FirebaseAuth.instance.currentUser;
@@ -66,32 +68,69 @@ class RewardsController extends GetxController {
     return "MED-${List.generate(6, (index) => chars[Random().nextInt(chars.length)]).join()}";
   }
 
-Future<void> claimDailyReward() async {
-    if (isClaimedToday.value) return; // Agar pehle hi claim hai to kuch na karo
+  // Future<void> claimDailyReward() async {
+  //     if (isClaimedToday.value) return; // Agar pehle hi claim hai to kuch na karo
+
+  //     try {
+  //       // Aaj ki date aur reward calculate karna
+  //       int dailyReward = (streak.value + 1) * 10;
+  //       if (streak.value >= 6) dailyReward = 100; // 7th Day Jackpot
+
+  //       await FirebaseFirestore.instance
+  //           .collection('users')
+  //           .doc(user!.uid)
+  //           .update({
+  //             'points': FieldValue.increment(dailyReward),
+  //             'streak': (streak.value >= 6) ? 0 : FieldValue.increment(1),
+  //             'lastCheckIn':
+  //                 FieldValue.serverTimestamp(), // Aaj ki date save ho jayegi
+  //           });
+
+  //       Get.snackbar(
+  //         "Jackpot!",
+  //         "You earned $dailyReward points!",
+  //         snackPosition: SnackPosition.BOTTOM,
+  //       );
+  //     } catch (e) {
+  //       Get.snackbar("Error", "Could not claim: $e");
+  //     }
+  //   }
+  // }
+  // rewards_controller.dart mein yeh method add karein
+
+  Future<void> claimDailyReward() async {
+    if (user == null || isClaimedToday.value) return;
 
     try {
-      // Aaj ki date aur reward calculate karna
-      int dailyReward = (streak.value + 1) * 10;
-      if (streak.value >= 6) dailyReward = 100; // 7th Day Jackpot
+      // Reward calculate karna (e.g., Day 1 = 10 points, Day 7 = 100 points)
+      int currentStreak = streak.value;
+      int rewardAmount = (currentStreak == 6) ? 100 : (currentStreak + 1) * 10;
 
-      await FirebaseFirestore.instance
+      final userRef = FirebaseFirestore.instance
           .collection('users')
-          .doc(user!.uid)
-          .update({
-            'points': FieldValue.increment(dailyReward),
-            'streak': (streak.value >= 6) ? 0 : FieldValue.increment(1),
-            'lastCheckIn':
-                FieldValue.serverTimestamp(), // Aaj ki date save ho jayegi
-          });
+          .doc(user!.uid);
 
-      Get.snackbar(
-        "Jackpot!",
-        "You earned $dailyReward points!",
-        snackPosition: SnackPosition.BOTTOM,
+      await userRef.update({
+        'points': FieldValue.increment(rewardAmount),
+        'streak': currentStreak >= 6 ? 0 : FieldValue.increment(1),
+        'lastCheckIn': FieldValue.serverTimestamp(),
+      });
+
+      // Success Screen par bhejna
+      Get.to(
+        () => RewardSuccessScreen(
+          rewardName: "Daily Check-in Reward",
+          cost: "+$rewardAmount Points",
+        ),
       );
     } catch (e) {
-      Get.snackbar("Error", "Could not claim: $e");
+      Get.snackbar(
+        "Error",
+        "Failed to claim reward: $e",
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
     }
   }
 }
-

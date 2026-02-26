@@ -2,10 +2,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'admin_dashboard.dart';
-import 'medicine_inventory_screen.dart'; // Nayi screen jo hum banayenge
+import 'medicine_inventory_screen.dart';
 import 'admin_orders_screen.dart';
 import 'payment_verification_screen.dart';
-import '../login_screen.dart';
+import '../login_screen.dart'; // Apne folder structure ke hisaab se path check kar lein
 
 class AdminDrawer extends StatelessWidget {
   const AdminDrawer({super.key});
@@ -57,27 +57,48 @@ class AdminDrawer extends StatelessWidget {
             Get.to(() => const PaymentVerificationScreen());
           }),
 
-          const Divider(),
-
-          // Dark Mode Toggle
-          ListTile(
-            leading: Icon(Get.isDarkMode ? Icons.light_mode : Icons.dark_mode),
-            title: Text(Get.isDarkMode ? "Switch to Light" : "Switch to Dark"),
-            trailing: Switch(
-              value: Get.isDarkMode,
-              onChanged: (value) {
-                Get.changeTheme(
-                  Get.isDarkMode ? ThemeData.light() : ThemeData.dark(),
-                );
-              },
-            ),
-          ),
-
           const Spacer(),
-          _sidebarItem(Icons.logout_rounded, "Logout", () async {
-            await FirebaseAuth.instance.signOut();
-            Get.offAll(() => const LoginScreen());
-          }, color: Colors.red),
+          const Divider(), // Logout se pehle ek line takay design acha lagay
+          // --- LOGOUT BUTTON WITH CONFIRMATION DIALOG ---
+          _sidebarItem(Icons.logout_rounded, "Logout", () {
+            Get.dialog(
+              AlertDialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                title: const Text(
+                  "Logout",
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                content: const Text(
+                  "Are you sure you want to logout from Admin Portal?",
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Get.back(), // Dialog band karne ke liye
+                    child: const Text(
+                      "Cancel",
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      await FirebaseAuth.instance.signOut();
+                      Get.offAll(
+                        () => const LoginScreen(),
+                      ); // Login screen pe bhej dega
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color.fromARGB(255, 5, 99, 29),
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text("Logout"),
+                  ),
+                ],
+              ),
+            );
+          }, color: Colors.redAccent),
+
           const SizedBox(height: 20),
         ],
       ),

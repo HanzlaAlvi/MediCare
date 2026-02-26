@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'dart:convert'; // 🛡️ Base64 decode karne ke liye laazmi hai
+
 import 'admin_controller.dart';
 import 'add_edit_medicine_screen.dart';
 import 'admin_drawer.dart'; // Upar wala drawer import karein
@@ -77,7 +79,50 @@ class MedicineInventoryScreen extends StatelessWidget {
     );
   }
 
+  // 🛡️ SMART IMAGE BUILDER FOR ADMIN PANEL
   Widget _buildMedicineImage(String path) {
+    Widget imageWidget;
+
+    if (path.isEmpty) {
+      imageWidget = const Icon(Icons.medication, color: Colors.grey);
+    } else if (path.startsWith('http')) {
+      // 1. Internet URL
+      imageWidget = Image.network(
+        path,
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) =>
+            const Icon(Icons.broken_image, color: Colors.grey),
+      );
+    } else if (path.startsWith('assets/')) {
+      // 2. Local Asset
+      imageWidget = Image.asset(
+        path,
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) =>
+            const Icon(Icons.broken_image, color: Colors.grey),
+      );
+    } else {
+      // 3. Base64 String (Jo abhi humne database me upload ki hai)
+      try {
+        String base64String = path;
+        // Agar image me 'data:image/jpeg;base64,' jaisa text ho toh use hata dein
+        if (path.contains(',')) {
+          base64String = path.split(',').last;
+        }
+        // White spaces ko clean karein
+        base64String = base64String.replaceAll(RegExp(r'\s+'), '');
+
+        imageWidget = Image.memory(
+          base64Decode(base64String),
+          fit: BoxFit.cover,
+          errorBuilder: (c, e, s) =>
+              const Icon(Icons.broken_image, color: Colors.grey),
+        );
+      } catch (e) {
+        imageWidget = const Icon(Icons.medication, color: Colors.grey);
+      }
+    }
+
     return Container(
       width: 50,
       height: 50,
@@ -87,18 +132,7 @@ class MedicineInventoryScreen extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: path.startsWith('http')
-            ? Image.network(
-                path,
-                fit: BoxFit.cover,
-                errorBuilder: (c, e, s) => const Icon(Icons.broken_image),
-              )
-            : Image.asset(
-                path,
-                fit: BoxFit.cover,
-                errorBuilder: (c, e, s) =>
-                    const Icon(Icons.image_not_supported),
-              ),
+        child: imageWidget, // 👈 Smart image widget yahan lag gaya
       ),
     );
   }

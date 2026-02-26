@@ -1,9 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart'; // 📦 Storage import
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:image_picker/image_picker.dart'; // 📦 Image Picker import
+import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'dart:convert'; // Base64 encoding ke liye zaroori hai
 import 'dart:math';
 
 class AddEditMedicineScreen extends StatefulWidget {
@@ -38,9 +38,11 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
     'Syrup',
     'Painkiller',
     'Vitamins',
+    'Drops',
   ];
 
-  File? _pickedImage; // Local file holder
+  File? _pickedImage;
+  String _base64Image = ""; // 🛡️ Base64 string save karne ke liye
   bool _isEditing = false;
   bool _isLoading = false;
   bool _useUrl = true;
@@ -62,41 +64,118 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
       sideEffectsC.text = d['sideEffects'] ?? '';
       mfgDateC.text = d['mfgDate'] ?? '';
       expiryDateC.text = d['expiryDate'] ?? '';
-      imageUrlC.text = (d['images'] as List?)?.first ?? '';
+
+      // Load existing image (either URL or Base64)
+      if (d['images'] != null && (d['images'] as List).isNotEmpty) {
+        String existingImage = d['images'][0].toString();
+        if (existingImage.startsWith('http')) {
+          imageUrlC.text = existingImage;
+          _useUrl = true;
+        } else {
+          _base64Image = existingImage;
+          _useUrl = false;
+        }
+      }
     }
   }
 
-  // --- 📸 IMAGE PICKER LOGIC ---
+  // --- 📸 IMAGE PICKER LOGIC (Convert to Base64) ---
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 70,
+      imageQuality: 50, // Image quality 50% ki hai taake size chota rahay
     );
 
     if (image != null) {
+      File imgFile = File(image.path);
+      List<int> imageBytes = await imgFile.readAsBytes();
+      String base64String = base64Encode(
+        imageBytes,
+      ); // 🛡️ Base64 mein convert ho gayi
+
       setState(() {
-        _pickedImage = File(image.path);
+        _pickedImage = imgFile;
+        _base64Image = base64String;
         _useUrl = false;
-        imageUrlC.text = "Local Image Selected"; // Placeholder text
+        imageUrlC.text = "Image Selected from Gallery";
       });
     }
   }
 
-  // --- ☁️ FIREBASE STORAGE UPLOAD ---
-  Future<String?> _uploadToStorage() async {
-    if (_pickedImage == null) return imageUrlC.text.trim();
+  // --- 📂 SAVE TO MEDICINES COLLECTION ---
+  Future<void> _saveMedicine() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    // Check if any image is selected
+    if (_useUrl && imageUrlC.text.trim().isEmpty) {
+      Get.snackbar(
+        "Error",
+        "Please provide an image URL or select a photo.",
+        backgroundColor: Colors.redAccent,
+        colorText: Colors.white,
+      );
+      return;
+    }
+    if (!_useUrl && _base64Image.isEmpty) {
+      Get.snackbar(
+        "Error",
+        "Please select a photo from gallery.",
+        backgroundColor: Colors.redAccent,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    // Final Image decide karo (URL ya Base64)
+    String finalImageUrl = _useUrl ? imageUrlC.text.trim() : _base64Image;
+
+    final Map<String, dynamic> data = {
+      'name': nameC.text.trim(),
+      'brand': brandC.text.trim(),
+      'category': selectedCategory,
+      'price': "Rs. ${priceC.text.trim()}",
+      'stock': int.tryParse(stockC.text.trim()) ?? 0,
+      'description': descriptionC.text.trim(),
+      'ingredients': ingredientsC.text.trim(),
+      'safetyAdvice': safetyC.text.trim(),
+      'sideEffects': sideEffectsC.text.trim(),
+      'mfgDate': mfgDateC.text.trim(),
+      'expiryDate': expiryDateC.text.trim(),
+      'images': [finalImageUrl], // Yahan base64 string save ho jayegi!
+      'timestamp': FieldValue.serverTimestamp(),
+      'color': _isEditing
+          ? (widget.medicineData?['color'] ?? _getRandomPastelColor())
+          : _getRandomPastelColor(),
+    };
 
     try {
-      String fileName =
-          'medicines/${DateTime.now().millisecondsSinceEpoch}.png';
-      Reference ref = FirebaseStorage.instance.ref().child(fileName);
-      UploadTask uploadTask = ref.putFile(_pickedImage!);
-      TaskSnapshot snapshot = await uploadTask;
-      return await snapshot.ref.getDownloadURL();
+      if (_isEditing) {
+        await FirebaseFirestore.instance
+            .collection('medicines')
+            .doc(widget.docId)
+            .update(data);
+      } else {
+        await FirebaseFirestore.instance.collection('medicines').add(data);
+      }
+      Get.back();
+      Get.snackbar(
+        "Success",
+        "Medicine saved successfully!",
+        backgroundColor: const Color(0xFF285D66),
+        colorText: Colors.white,
+      );
     } catch (e) {
-      Get.snackbar("Upload Error", "Failed to upload image to storage.");
-      return null;
+      Get.snackbar(
+        "Error",
+        "Firestore error: $e",
+        backgroundColor: Colors.redAccent,
+        colorText: Colors.white,
+      );
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
@@ -135,65 +214,6 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
       "0xFFF1F8E9",
     ];
     return pastelColors[Random().nextInt(pastelColors.length)];
-  }
-
-  Future<void> _saveMedicine() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-
-    // Pehle image upload hogi (agar new select ki hai)
-    String? finalImageUrl = await _uploadToStorage();
-
-    if (finalImageUrl == null || finalImageUrl.isEmpty) {
-      setState(() => _isLoading = false);
-      Get.snackbar(
-        "Image Required",
-        "Please provide a URL or upload an image.",
-      );
-      return;
-    }
-
-    final Map<String, dynamic> data = {
-      'name': nameC.text.trim(),
-      'brand': brandC.text.trim(),
-      'category': selectedCategory,
-      'price': "Rs. ${priceC.text.trim()}",
-      'stock': int.tryParse(stockC.text.trim()) ?? 0,
-      'description': descriptionC.text.trim(),
-      'ingredients': ingredientsC.text.trim(),
-      'safetyAdvice': safetyC.text.trim(),
-      'sideEffects': sideEffectsC.text.trim(),
-      'mfgDate': mfgDateC.text.trim(),
-      'expiryDate': expiryDateC.text.trim(),
-      'color': _isEditing
-          ? widget.medicineData!['color']
-          : _getRandomPastelColor(),
-      'rating': _isEditing ? widget.medicineData!['rating'] : "5.0",
-      'images': [finalImageUrl],
-      'timestamp': FieldValue.serverTimestamp(),
-    };
-
-    try {
-      if (_isEditing) {
-        await FirebaseFirestore.instance
-            .collection('medicines')
-            .doc(widget.docId)
-            .update(data);
-      } else {
-        await FirebaseFirestore.instance.collection('medicines').add(data);
-      }
-      Get.back();
-      Get.snackbar(
-        "Success",
-        "Inventory Updated",
-        backgroundColor: Colors.white,
-        colorText: const Color(0xFF285D66),
-      );
-    } catch (e) {
-      Get.snackbar("Error", e.toString());
-    } finally {
-      setState(() => _isLoading = false);
-    }
   }
 
   @override
@@ -339,9 +359,14 @@ class _AddEditMedicineScreenState extends State<AddEditMedicineScreen> {
                               image: FileImage(_pickedImage!),
                               fit: BoxFit.cover,
                             )
+                          : _base64Image.isNotEmpty
+                          ? DecorationImage(
+                              image: MemoryImage(base64Decode(_base64Image)),
+                              fit: BoxFit.cover,
+                            )
                           : null,
                     ),
-                    child: _pickedImage == null
+                    child: _pickedImage == null && _base64Image.isEmpty
                         ? const Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
